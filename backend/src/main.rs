@@ -1,6 +1,7 @@
 //! live-chat-server API server entry point.
 
-use live_chat_server::config::Config;
+use live_chat_server::{AppState, config::Config};
+use sqlx::PgPool;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -18,7 +19,14 @@ async fn main() -> anyhow::Result<()> {
     // The full DATABASE_URL may contain credentials; log only the port.
     tracing::info!(port = config.port, "starting live-chat-server");
 
-    let app = live_chat_server::build_router().layer(tower_http::trace::TraceLayer::new_for_http());
+    let pool = PgPool::connect(&config.database_url).await?;
+    // Apply pending migrations on startup so the dev/compose flow never needs a
+    // manual `sqlx migrate run`.
+    sqlx::migrate!("./migrations").run(&pool).await?;
+    tracing::info!("database migrations applied");
+
+    let app = live_chat_server::build_router(AppState { pool })
+        .layer(tower_http::trace::TraceLayer::new_for_http());
 
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", config.port)).await?;
     tracing::info!("listening on http://0.0.0.0:{}", config.port);

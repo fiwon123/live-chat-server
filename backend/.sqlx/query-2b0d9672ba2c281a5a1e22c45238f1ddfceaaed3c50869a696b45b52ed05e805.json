@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO room_memberships (room_id, user_id)\n               VALUES ($1, $2)\n               ON CONFLICT (room_id, user_id) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2b0d9672ba2c281a5a1e22c45238f1ddfceaaed3c50869a696b45b52ed05e805"
+}

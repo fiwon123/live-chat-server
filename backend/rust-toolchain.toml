@@ -1,0 +1,8 @@
+# Pin the toolchain for both local dev (rustup reads this file) and CI, so the
+# two can never drift apart. Bumped from 1.83 to 1.99 (edition 2024) because
+# current dependencies (sqlx crypto subtree, hyper-util) publish manifests that
+# require Cargo's edition2024 feature, which stabilized in Rust 1.85.
+[toolchain]
+channel = "1.99.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
