@@ -9,7 +9,7 @@ deferred to a multi-instance extension.
 
 **MVP on `dev`.** Users can register, log in, create or join chat rooms, exchange
 text messages in real time over WebSockets, and reload history after
-reconnecting. A frontend is planned (React + Vite + TS). See
+reconnecting. A React + Vite + TypeScript client ships alongside the backend. See
 `PROJECT_CONTEXT.md` and `AGENTS.md` for the brief and agent rules.
 
 ### What is implemented
@@ -25,6 +25,10 @@ reconnecting. A frontend is planned (React + Vite + TS). See
   join/leave events, revoked-membership teardown.
 - **Observability**: structured `tracing` logs (connect/disconnect, errors,
   broadcasts); `/healthz` liveness probe.
+- **Frontend**: React 19 + Vite + TS SPA — register/login, room
+  list/create/join, live chat (history, presence, reconnect with backoff), a
+  typed REST + WebSocket client, and Vitest unit tests. The dev server proxies
+  `/api` (HTTP + WS) to the backend, so there is no CORS.
 
 Full endpoint and WebSocket protocol reference: **[`docs/api.md`](docs/api.md)**.
 
@@ -32,37 +36,48 @@ Full endpoint and WebSocket protocol reference: **[`docs/api.md`](docs/api.md)**
 
 - **Backend**: Rust (Axum on Tokio), SQLx, Serde, tracing
 - **Database**: PostgreSQL 16
+- **Frontend**: React 19 + Vite + TS; Oxlint (lint) + Oxfmt (format); npm
 - **Dev**: Docker Compose + mise
-- **Frontend**: React + Vite + TS + Oxfmt + Oxlint (planned)
 
 ## Layout
 
 ```text
-backend/    # API + WS + persistence + auth (routes, services, storage, ws)
+backend/    # API + WS + persistence + auth (routes, handlers, ws, services, storage, models)
+frontend/   # React + Vite + TS client (api/, chat/, hooks/, components/)
 docs/       # api.md — endpoint and WebSocket protocol reference
 ```
 
 ## Development
 
+`make check` runs every component's gate (format, lint, test, build) and fails
+on the first problem. Install dependencies first: `cargo fetch` (backend) and
+`npm ci` (from `frontend/`).
+
 ```bash
-make check        # fmt + clippy + test + build (backend; locked)
+make check        # backend (fmt + clippy + test + build, --locked) + frontend gate
 make dev-up       # Postgres (+ Redis commented), dev sandbox
 make shell        # inside sandbox
 make opencode     # opencode inside sandbox
 ```
 
 ```bash
-cd backend
-cargo run         # reads DATABASE_URL + PORT (default 8080); applies migrations on start
-cargo test
+cd backend && cargo run    # reads DATABASE_URL + PORT (default 8080); runs migrations on start
+cd backend && cargo test   # unit + integration tests
+```
+
+```bash
+cd frontend && npm ci && npm run dev   # Vite dev server on :5173, proxies /api to the backend
+cd frontend && npm run build           # type-check + production build
+cd frontend && npm run test            # Vitest unit tests
 ```
 
 Copy `.env.example` to `.env` for local runs.
 
 ## Workflow
 
-Issue → branch → PR → merge on `main` ← `dev` ← feature branches. CI runs only on
-`dev` → `main` PRs; local `make check` is the feature-branch gate.
+Issue → branch → PR → merge on `main` ← `dev` ← feature branches. CI (Rust +
+frontend jobs) runs only on `dev` → `main` PRs; local `make check` is the
+feature-branch gate.
 - `AGENTS.md` — agent rules and conventions (save-before-broadcast, IDs+timestamps, limits/validation)
 - `WORKFLOW_PROMPT.md` — dev workflow prompt
 - `.opencode/instructions/` — workflow, testing, memory

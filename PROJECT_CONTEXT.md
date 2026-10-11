@@ -84,8 +84,8 @@ frontend/   # React + TypeScript client (Vite): pages, components, API/WS client
 - WebSockets: save each message to PostgreSQL **before broadcasting** it;
   messages must carry IDs and timestamps so clients display them consistently
   across reconnects.
-- Frontend is configured (React + Vite + TS + Oxfmt + Oxlint); its own issue
-  covers the chat UI.
+- Frontend is implemented (React + Vite + TS + Oxfmt + Oxlint): register/login,
+  room list/create/join, and real-time chat over WebSocket via a typed client.
 - `.sqlx/` must **not** be gitignored — it's the offline query cache so
   `cargo build` doesn't require a live DB when using `SQLX_OFFLINE=true`.
 - Docker dev sandbox: Postgres on host `5434`, Redis on host `6381` (if enabled),
