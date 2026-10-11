@@ -3,6 +3,10 @@
   "plugins": ["react", "typescript", "oxc"],
   "rules": {
     "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    // Data-loading effects (fetching rooms/messages, opening a WebSocket) set
+    // state when their input changes; that is the documented way to
+    // synchronize with an external system, so this rule is intentionally off.
+    "react/set-state-in-effect": "off"
   }
 }

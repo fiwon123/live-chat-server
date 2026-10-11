@@ -97,7 +97,7 @@ make check
 - `backend/Makefile`: `cargo fmt --check`, `cargo clippy --locked
   --all-targets -- -D warnings`, `cargo test --locked`, `cargo build --locked`.
 - `frontend/Makefile`: `npm run format:check`, `npm run lint`, `npm run
-  typecheck`, `npm run build` (install deps first with `npm ci`).
+  typecheck`, `npm run test`, `npm run build` (install deps first with `npm ci`).
 
 A component whose toolchain is absent is **skipped** — a skipped run is not a
 passed run. A component whose toolchain is present but dependencies are missing
