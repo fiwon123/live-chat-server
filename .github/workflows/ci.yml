@@ -1,16 +1,18 @@
-name: CI (Rust)
+name: CI
 
-# Rust CI for a backend crate. Standard toolchain only:
-# rustfmt, clippy, test, build -- no third-party linters, so it runs on any
-# Rust project unchanged. `Cargo.lock` is the lockfile, so every cargo command
-# passes `--locked`: a run then fails if the lock is missing or stale instead of
-# quietly resolving a dependency set nobody reviewed.
+# CI for both components. The Rust job uses the standard toolchain only
+# (rustfmt, clippy, test, build). The frontend job runs the component's own
+# `make check`-equivalent steps on Node. `Cargo.lock` is the Rust lockfile, so
+# every cargo command passes `--locked`: a run then fails if the lock is
+# missing or stale instead of quietly resolving a dependency set nobody
+# reviewed.
 
 on:
   pull_request:
     branches: [main]
     paths:
       - 'backend/**'
+      - 'frontend/**'
   workflow_dispatch:
 
 concurrency:
@@ -77,6 +79,37 @@ jobs:
 
       - name: Build
         run: cargo build --locked
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `npm ci` installs exactly the reviewed lockfile; a stale lockfile fails.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
 
 # A `paths:` filter that the change does not touch means this workflow does not
 # trigger at all, and a triggered run whose jobs are all gated out reports
