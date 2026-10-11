@@ -7,18 +7,16 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "live_chat_server=info,tower_http=info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("live_chat_server=info,tower_http=info")
+            }),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
 
     let config = Config::from_env();
-    tracing::info!(
-        port = config.port,
-        database_url = %config.database_url,
-        "starting live-chat-server"
-    );
+    // The full DATABASE_URL may contain credentials; log only the port.
+    tracing::info!(port = config.port, "starting live-chat-server");
 
     let app = live_chat_server::build_router().layer(tower_http::trace::TraceLayer::new_for_http());
 
