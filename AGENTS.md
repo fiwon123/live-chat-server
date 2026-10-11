@@ -100,7 +100,8 @@ make check
   typecheck`, `npm run build` (install deps first with `npm ci`).
 
 A component whose toolchain is absent is **skipped** — a skipped run is not a
-passed run.
+passed run. A component whose toolchain is present but dependencies are missing
+**fails** with instructions (`npm ci`, `cargo fetch`) rather than passing.
 
 ## Runtime Environment
 

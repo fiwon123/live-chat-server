@@ -10,10 +10,12 @@ help:
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
 check: ## Run checks for all components
-	@for d in $(COMPONENTS); do \
+	@status=0; \
+	for d in $(COMPONENTS); do \
 	  echo "=== $$d ==="; \
-	  $(MAKE) -C $$d check 2>/dev/null || $(MAKE) check-local COMPONENT_DIR=$$d; \
-	done
+	  $(MAKE) -C $$d check 2>/dev/null || $(MAKE) check-local COMPONENT_DIR=$$d || status=1; \
+	done; \
+	exit $$status
 
 check-local:
 	@if [ -f $(COMPONENT_DIR)/Makefile ]; then $(MAKE) -C $(COMPONENT_DIR) check; else echo "ERROR: No Makefile in $(COMPONENT_DIR). Create one or remove it from COMPONENTS."; exit 1; fi
@@ -21,7 +23,7 @@ check-local:
 clean: ## Remove build and cache artifacts
 	@echo "cleaning"
 	@if [ -f backend/Cargo.toml ]; then cargo clean --manifest-path backend/Cargo.toml; fi
-	@if [ -d frontend/node_modules ]; then rm -rf frontend/node_modules frontend/dist; fi
+	@rm -rf frontend/node_modules frontend/dist
 
 preflight:
 	@test -x "$(HOME)/.opencode/bin/opencode" || { echo "ERROR: opencode not found at ~/.opencode/bin/opencode" >&2; exit 1; }

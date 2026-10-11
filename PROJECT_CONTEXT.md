@@ -75,7 +75,9 @@ frontend/   # React + TypeScript client (Vite): pages, components, API/WS client
 ## Notes
 
 - `make check` delegates to each component's Makefile. A component whose
-  toolchain is absent is skipped — a skipped run is not a passed run.
+  toolchain is absent is skipped — a skipped run is not a passed run. A
+  component with its toolchain but missing dependencies fails with instructions
+  (`npm ci`, `cargo fetch`) rather than passing.
 - Single-server instance to start: live room connections and broadcast channels
   stay in memory. Redis Pub/Sub is only for multi-instance; the compose Redis
   block is left commented/optional.

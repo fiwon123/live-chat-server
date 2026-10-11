@@ -52,7 +52,7 @@
     "frontend": {
       "mode": "subagent",
       "permission": {
-        "edit": { "frontend/**": "allow" },
+        "edit": { "frontend/**": "allow", "**/*.env": "deny", "**/*.env.example": "allow", "**/*.envrc": "deny" },
         "bash": { "*": "ask", "cd frontend*": "allow", "npm*": "allow", "npx*": "allow", "node*": "allow", "make check*": "allow", "printenv*": "deny", "env": "deny", "env *": "deny", "docker compose config*": "deny", "docker-compose config*": "deny", "docker * config*": "deny", "docker * env": "deny", "docker * env *": "deny", "docker inspect*": "deny", "*.env": "deny", "*.envrc": "deny", "* .env": "deny", "* .envrc": "deny", "*/.env": "deny", "*/.envrc": "deny", "* .env*": "deny", "*/.env*": "deny", "* .envrc*": "deny", "*/.envrc*": "deny", "*.env.*": "deny", "* .env.*": "deny", "*/.env.*": "deny" }
       }
     },
@@ -60,7 +60,7 @@
       "mode": "subagent",
       "permission": {
         "edit": { "*": "deny" },
-        "bash": { "*": "ask", "printenv*": "deny", "env": "deny", "env *": "deny", "docker compose config*": "deny", "docker-compose config*": "deny", "docker * config*": "deny", "docker * env": "deny", "docker * env *": "deny", "docker inspect*": "deny", "*.env": "deny", "*.envrc": "deny", "* .env": "deny", "* .envrc": "deny", "*/.env": "deny", "*/.envrc": "deny", "* .env*": "deny", "*/.env*": "deny", "* .envrc*": "deny", "*/.envrc*": "deny", "*.env.*": "deny", "* .env.*": "deny", "*/.env.*": "deny" }
+        "bash": { "*": "deny", "printenv*": "deny", "env": "deny", "env *": "deny", "docker compose config*": "deny", "docker-compose config*": "deny", "docker * config*": "deny", "docker * env": "deny", "docker * env *": "deny", "docker inspect*": "deny", "*.env": "deny", "*.envrc": "deny", "* .env": "deny", "* .envrc": "deny", "*/.env": "deny", "*/.envrc": "deny", "* .env*": "deny", "*/.env*": "deny", "* .envrc*": "deny", "*/.envrc*": "deny", "*.env.*": "deny", "* .env.*": "deny", "*/.env.*": "deny" }
       }
     }
   }

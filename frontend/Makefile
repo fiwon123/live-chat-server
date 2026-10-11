@@ -5,18 +5,23 @@
 # passing.
 #
 # Dependencies are installed explicitly (`make install`, or `npm ci`) so the
-# gate itself stays deterministic and offline. `check` fails loudly with a clear
-# message when they are missing rather than skipping.
+# gate itself stays deterministic and offline. A missing toolchain is skipped
+# (like the backend); missing dependencies fail loudly with instructions.
 
 .PHONY: check install format lint typecheck build
 
 check: ## format check + lint + typecheck + build (the gate)
-	@command -v npm >/dev/null 2>&1 || { echo "ERROR: npm is not on PATH. Install Node 24+ and retry." >&2; exit 1; }
-	@test -d node_modules || { echo "ERROR: frontend deps are missing. Run: cd frontend && npm ci" >&2; exit 1; }
-	npm run format:check
-	npm run lint
-	npm run typecheck
-	npm run build
+	@if ! command -v npm >/dev/null 2>&1; then \
+		echo "npm not found; skipping frontend checks"; \
+	elif [ ! -d node_modules ]; then \
+		echo "ERROR: frontend dependencies not installed -- run 'npm ci' in frontend/" >&2; \
+		exit 1; \
+	else \
+		npm run format:check && \
+		npm run lint && \
+		npm run typecheck && \
+		npm run build; \
+	fi
 
 install: ## Install dependencies from the lockfile
 	npm ci
