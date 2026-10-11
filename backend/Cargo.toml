@@ -9,8 +9,9 @@ license = "MIT"
 [dependencies]
 anyhow = "1"
 argon2 = "0.6"
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
 chrono = { version = "0.4", features = ["serde"] }
+futures-util = { version = "0.3", features = ["sink"] }
 jsonwebtoken = { version = "11", features = ["rust_crypto"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -23,4 +24,5 @@ uuid = { version = "1", features = ["v4", "serde"] }
 
 [dev-dependencies]
 http-body-util = "0.1"
+tokio-tungstenite = "0.26"
 tower = { version = "0.5", features = ["util"] }

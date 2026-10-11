@@ -11,6 +11,7 @@ pub mod models;
 pub mod routes;
 pub mod services;
 pub mod storage;
+pub mod ws;
 
 use std::sync::Arc;
 
@@ -18,12 +19,15 @@ use axum::{Json, Router, extract::State, routing::get};
 use sqlx::PgPool;
 
 use crate::config::Config;
+use crate::ws::RoomRegistry;
 
 /// Application-wide shared state, cloned into every handler.
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
     pub config: Arc<Config>,
+    /// In-memory per-room WebSocket registry (single server instance).
+    pub registry: Arc<RoomRegistry>,
 }
 
 impl AppState {
@@ -31,6 +35,7 @@ impl AppState {
         Self {
             pool,
             config: Arc::new(config),
+            registry: Arc::new(RoomRegistry::new()),
         }
     }
 }
