@@ -25,11 +25,12 @@ async fn main() -> anyhow::Result<()> {
     sqlx::migrate!("./migrations").run(&pool).await?;
     tracing::info!("database migrations applied");
 
-    let app = live_chat_server::build_router(AppState { pool })
+    let port = config.port;
+    let app = live_chat_server::build_router(AppState::new(pool, config))
         .layer(tower_http::trace::TraceLayer::new_for_http());
 
-    let listener = tokio::net::TcpListener::bind(("0.0.0.0", config.port)).await?;
-    tracing::info!("listening on http://0.0.0.0:{}", config.port);
+    let listener = tokio::net::TcpListener::bind(("0.0.0.0", port)).await?;
+    tracing::info!("listening on http://0.0.0.0:{}", port);
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
