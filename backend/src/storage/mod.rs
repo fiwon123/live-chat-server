@@ -5,7 +5,7 @@ pub mod room_memberships;
 pub mod rooms;
 pub mod users;
 
-pub use messages::Messages;
+pub use messages::{MessageWithAuthor, Messages};
 pub use room_memberships::RoomMemberships;
-pub use rooms::Rooms;
+pub use rooms::{RoomWithMembership, Rooms};
 pub use users::Users;
