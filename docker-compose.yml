@@ -32,6 +32,29 @@ services:
     tty: true
     stdin_open: true
 
+  frontend:
+    build:
+      context: ./frontend
+    command:
+      ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173", "--strictPort"]
+    environment:
+      # Proxied from inside this container to the API service by name: "localhost"
+      # here is the frontend itself, not the backend.
+      - VITE_API_PROXY_TARGET=http://dev:8080
+      # Bind-mounted file events are unreliable on Docker Desktop (macOS/Windows)
+      # without polling; the cost on Linux is negligible.
+      - CHOKIDAR_USEPOLLING=true
+    ports:
+      - "${FRONTEND_HOST_PORT:-5173}:5173"
+    volumes:
+      # Vite watches the bind-mounted source; node_modules comes from the image
+      # (via the named volume) so host and container trees don't clobber each other.
+      - ./frontend:/workspace:cached
+      - frontend_node_modules:/workspace/node_modules
+    depends_on:
+      dev:
+        condition: service_started
+
   db:
     image: postgres:16-alpine
     environment:
@@ -50,3 +73,4 @@ services:
 
 volumes:
   pgdata:
+  frontend_node_modules:

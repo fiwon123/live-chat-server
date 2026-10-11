@@ -88,5 +88,6 @@ frontend/   # React + TypeScript client (Vite): pages, components, API/WS client
   room list/create/join, and real-time chat over WebSocket via a typed client.
 - `.sqlx/` must **not** be gitignored — it's the offline query cache so
   `cargo build` doesn't require a live DB when using `SQLX_OFFLINE=true`.
-- Docker dev sandbox: Postgres on host `5434`, Redis on host `6381` (if enabled),
-  API on host `8083` by default — all overridable to avoid collisions.
+- Docker dev sandbox (`make dev-up`): Postgres on host `5434`, Redis on host
+  `6381` (if enabled), API on host `8083`, frontend dev server on host `5173` —
+  all overridable to avoid collisions.
