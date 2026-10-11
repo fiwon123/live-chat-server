@@ -48,6 +48,20 @@
         "edit": { "backend/tests/**": "allow", "**/tests/**": "allow", "**/tests.rs": "allow", "**/*_test.rs": "allow", "**/*.env": "deny", "**/*.env.*": "deny", "**/*.env.example": "allow", "**/*.envrc": "deny" },
         "bash": { "*": "ask", "cd backend*": "allow", "cargo test*": "allow", "cargo clippy*": "allow", "cargo fmt*": "allow", "cargo build*": "allow", "sqlx*": "allow", "make check*": "allow", "printenv*": "deny", "env": "deny", "env *": "deny", "docker compose config*": "deny", "docker-compose config*": "deny", "docker * config*": "deny", "docker * env": "deny", "docker * env *": "deny", "docker inspect*": "deny", "*.env": "deny", "*.envrc": "deny", "* .env": "deny", "* .envrc": "deny", "*/.env": "deny", "*/.envrc": "deny", "* .env*": "deny", "*/.env*": "deny", "* .envrc*": "deny", "*/.envrc*": "deny", "*.env.*": "deny", "* .env.*": "deny", "*/.env.*": "deny" }
       }
+    },
+    "frontend": {
+      "mode": "subagent",
+      "permission": {
+        "edit": { "frontend/**": "allow", "**/*.env": "deny", "**/*.env.example": "allow", "**/*.envrc": "deny" },
+        "bash": { "*": "ask", "cd frontend*": "allow", "npm*": "allow", "npx*": "allow", "node*": "allow", "make check*": "allow", "printenv*": "deny", "env": "deny", "env *": "deny", "docker compose config*": "deny", "docker-compose config*": "deny", "docker * config*": "deny", "docker * env": "deny", "docker * env *": "deny", "docker inspect*": "deny", "*.env": "deny", "*.envrc": "deny", "* .env": "deny", "* .envrc": "deny", "*/.env": "deny", "*/.envrc": "deny", "* .env*": "deny", "*/.env*": "deny", "* .envrc*": "deny", "*/.envrc*": "deny", "*.env.*": "deny", "* .env.*": "deny", "*/.env.*": "deny" }
+      }
+    },
+    "visual": {
+      "mode": "subagent",
+      "permission": {
+        "edit": { "*": "deny" },
+        "bash": { "*": "deny", "printenv*": "deny", "env": "deny", "env *": "deny", "docker compose config*": "deny", "docker-compose config*": "deny", "docker * config*": "deny", "docker * env": "deny", "docker * env *": "deny", "docker inspect*": "deny", "*.env": "deny", "*.envrc": "deny", "* .env": "deny", "* .envrc": "deny", "*/.env": "deny", "*/.envrc": "deny", "* .env*": "deny", "*/.env*": "deny", "* .envrc*": "deny", "*/.envrc*": "deny", "*.env.*": "deny", "* .env.*": "deny", "*/.env.*": "deny" }
+      }
     }
   }
 }

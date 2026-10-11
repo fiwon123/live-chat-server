@@ -9,6 +9,16 @@ updates:
     groups:
       tokio: { patterns: ["tokio*", "axum", "tower*", "hyper"] }
       sqlx:  { patterns: ["sqlx*"] }
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    target-branch: "dev"
+    schedule: { interval: "weekly", day: "monday" }
+    labels: ["dependencies", "npm"]
+    commit-message: { prefix: "deps" }
+    groups:
+      react: { patterns: ["react", "react-dom", "@types/react*"] }
+      vite: { patterns: ["vite", "@vitejs/*"] }
+      tooling: { patterns: ["oxlint", "oxfmt", "typescript"] }
   - package-ecosystem: "github-actions"
     directory: "/"
     target-branch: "dev"

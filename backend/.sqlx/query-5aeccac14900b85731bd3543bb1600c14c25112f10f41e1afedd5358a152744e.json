@@ -1,0 +1,54 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT m.id, m.room_id, m.user_id, u.username, m.body, m.created_at\n                       FROM messages m\n                       JOIN users u ON u.id = m.user_id\n                       JOIN messages c ON c.id = $2 AND c.room_id = $1\n                       WHERE m.room_id = $1\n                         AND (m.created_at, m.id) < (c.created_at, c.id)\n                       ORDER BY m.created_at DESC, m.id DESC\n                       LIMIT $3",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "room_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "username",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "body",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "5aeccac14900b85731bd3543bb1600c14c25112f10f41e1afedd5358a152744e"
+}

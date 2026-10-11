@@ -32,7 +32,7 @@ storage, and broadcasting.
 - Database: PostgreSQL
 - Query layer: sqlx (compile-time-checked SQL)
 - Serialization: Serde
-- Frontend: planned, not yet configured (deferred to its own issue)
+- Frontend: React + TypeScript (Vite), Oxlint + Oxfmt, npm
 - Development: Docker Compose (optional) + `mise` toolchain pins
 - Later: Redis Pub/Sub for multi-instance broadcasting
 
@@ -50,6 +50,7 @@ Rust API (Axum + Tokio)
 
 ```text
 backend/    # Rust API: routes, handlers, ws, services, storage, models
+frontend/   # React + TypeScript client (Vite): pages, components, API/WS client
 ```
 
 ## Development Commands
@@ -66,6 +67,18 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
+### Frontend
+
+```bash
+cd frontend
+npm ci
+npm run dev
+npm run build
+npm run typecheck
+npm run lint
+npm run format
+```
+
 ### Docker Compose (optional)
 
 ```bash
@@ -80,10 +93,15 @@ docker compose logs -f dev
 make check
 ```
 
-`make check` delegates to `backend/Makefile`: `cargo fmt --check`, `cargo clippy
---locked --all-targets -- -D warnings`, `cargo test --locked`, `cargo build
---locked`. Until `backend/Cargo.toml` exists, the Rust steps are **skipped** —
-a skipped run is not a passed run.
+`make check` delegates to each component's Makefile.
+- `backend/Makefile`: `cargo fmt --check`, `cargo clippy --locked
+  --all-targets -- -D warnings`, `cargo test --locked`, `cargo build --locked`.
+- `frontend/Makefile`: `npm run format:check`, `npm run lint`, `npm run
+  typecheck`, `npm run test`, `npm run build` (install deps first with `npm ci`).
+
+A component whose toolchain is absent is **skipped** — a skipped run is not a
+passed run. A component whose toolchain is present but dependencies are missing
+**fails** with instructions (`npm ci`, `cargo fetch`) rather than passing.
 
 ## Runtime Environment
 
@@ -108,8 +126,11 @@ The agent runs at the workspace root. Docker is not available inside the sandbox
 | Service | Host | Container |
 |---------|------|-----------|
 | dev API | 8083 | 8080      |
+| frontend| 5173 | 5173      |
 | Postgres| 5434 | 5432      |
 | Redis   | 6381 | 6379      |
+
+<!-- keep column spacing for readability -->
 
 (Redis block is commented/optional; host ports overridable.)
 
@@ -142,10 +163,18 @@ The agent runs at the workspace root. Docker is not available inside the sandbox
 - **reviewer** (subagent): code review, read-only
 - **backend** (subagent): implements `backend/` only
 - **tester** (subagent): writes/runs tests, scoped to test files
+- **frontend** (subagent): implements `frontend/` only; React + Vite + TS, Oxlint/Oxfmt
+- **visual** (subagent): reviews captured UI screenshots, read-only
 
-`frontend`/`visual` are **not configured** (deferred to its own issue). Adding them later means updating topology, `COMPONENTS` in `Makefile`, dependabot (npm), `ci.yml`, and the agent set.
+Keep this list in sync with `.opencode/agents/` and the `agent` block in
+`opencode.json`.
 
 ## CI
 
 Runs on `dev` → `main` PRs + `workflow_dispatch`. Never on feature branches.
-Paths filter `backend/**`. Jobs: `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo test --locked`, `cargo build --locked`. **Skipped is not passed.**
+Paths filter `backend/**` and `frontend/**`. Jobs:
+- **rust**: `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D
+  warnings`, `cargo test --locked`, `cargo build --locked`.
+- **frontend**: Node 24, `npm ci`, `format:check`, `lint`, `typecheck`, `build`.
+
+**Skipped is not passed.**
