@@ -27,11 +27,28 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # A throwaway Postgres so the DB-backed integration tests actually run
+    # instead of silently skipping ("skipped is not passed").
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: live_chat
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
     env:
       # Resolve sqlx compile-time query macros from the committed `.sqlx/`
-      # cache. CI has no database service; this makes that explicit and fails
-      # loudly if a query changed without regenerating the cache.
+      # cache (deterministic and fails loudly when the cache is stale); tests
+      # still connect at runtime via DATABASE_URL.
       SQLX_OFFLINE: "true"
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/live_chat
     steps:
       - uses: actions/checkout@v7
 

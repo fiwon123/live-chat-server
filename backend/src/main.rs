@@ -16,6 +16,12 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = Config::from_env();
+    if config.uses_default_jwt_secret() {
+        tracing::warn!(
+            "JWT_SECRET is unset; using the committed insecure default. \
+             Set JWT_SECRET to a strong random value before deploying."
+        );
+    }
     // The full DATABASE_URL may contain credentials; log only the port.
     tracing::info!(port = config.port, "starting live-chat-server");
 
@@ -25,11 +31,12 @@ async fn main() -> anyhow::Result<()> {
     sqlx::migrate!("./migrations").run(&pool).await?;
     tracing::info!("database migrations applied");
 
-    let app = live_chat_server::build_router(AppState { pool })
+    let port = config.port;
+    let app = live_chat_server::build_router(AppState::new(pool, config))
         .layer(tower_http::trace::TraceLayer::new_for_http());
 
-    let listener = tokio::net::TcpListener::bind(("0.0.0.0", config.port)).await?;
-    tracing::info!("listening on http://0.0.0.0:{}", config.port);
+    let listener = tokio::net::TcpListener::bind(("0.0.0.0", port)).await?;
+    tracing::info!("listening on http://0.0.0.0:{}", port);
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())

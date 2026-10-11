@@ -12,9 +12,16 @@ pub struct Config {
     pub port: u16,
     /// PostgreSQL connection string (unused until the storage layer lands).
     pub database_url: String,
-    /// Secret used to sign JWTs (unused until auth lands).
+    /// Secret used to sign JWTs.
     pub jwt_secret: String,
 }
+
+/// Placeholder secret used when `JWT_SECRET` is not set.
+///
+/// Clearly insecure and committed in the repo, so tokens signed with it can be
+/// forged by anyone. Fine for local development; the server logs a warning
+/// when it is in use, and it must be overridden anywhere else.
+pub const DEFAULT_JWT_SECRET: &str = "dev-only-insecure-secret-change-me";
 
 impl Config {
     /// Load configuration from environment variables, falling back to the
@@ -25,6 +32,11 @@ impl Config {
             env::var("DATABASE_URL").ok(),
             env::var("JWT_SECRET").ok(),
         )
+    }
+
+    /// True when the signing secret is still the committed placeholder.
+    pub fn uses_default_jwt_secret(&self) -> bool {
+        self.jwt_secret == DEFAULT_JWT_SECRET
     }
 
     /// Build config from optional overrides; `None` selects the default.
@@ -39,8 +51,7 @@ impl Config {
         let port = port.and_then(|v| v.parse().ok()).unwrap_or(8080);
         let database_url = database_url
             .unwrap_or_else(|| "postgres://postgres:postgres@localhost:5434/live_chat".to_string());
-        let jwt_secret =
-            jwt_secret.unwrap_or_else(|| "dev-only-insecure-secret-change-me".to_string());
+        let jwt_secret = jwt_secret.unwrap_or_else(|| DEFAULT_JWT_SECRET.to_string());
 
         Self {
             port,
@@ -59,7 +70,8 @@ mod tests {
         let cfg = Config::from_values(None, None, None);
         assert_eq!(cfg.port, 8080);
         assert!(cfg.database_url.contains("localhost:5434/live_chat"));
-        assert_eq!(cfg.jwt_secret, "dev-only-insecure-secret-change-me");
+        assert_eq!(cfg.jwt_secret, DEFAULT_JWT_SECRET);
+        assert!(cfg.uses_default_jwt_secret());
     }
 
     #[test]
@@ -72,6 +84,7 @@ mod tests {
         assert_eq!(cfg.port, 9090);
         assert_eq!(cfg.database_url, "postgres://user:pass@db.example.com/chat");
         assert_eq!(cfg.jwt_secret, "super-secret");
+        assert!(!cfg.uses_default_jwt_secret());
     }
 
     #[test]
