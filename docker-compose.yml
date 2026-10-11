@@ -29,8 +29,37 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      # `cargo run` (and its first build) can take a while before the API
+      # accepts connections; the frontend waits for service_healthy.
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/healthz >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 300s
     tty: true
     stdin_open: true
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      # Proxied from inside this container to the API service by name: "localhost"
+      # here is the frontend itself, not the backend.
+      - VITE_API_PROXY_TARGET=http://dev:8080
+      # Bind-mounted file events are unreliable on Docker Desktop (macOS/Windows)
+      # without polling; the cost on Linux is negligible.
+      - CHOKIDAR_USEPOLLING=true
+    ports:
+      - "${FRONTEND_HOST_PORT:-5173}:5173"
+    volumes:
+      # Vite watches the bind-mounted source; deps live in the named volume and
+      # are (re)installed by the image's entrypoint when the lockfile changes.
+      - ./frontend:/workspace:cached
+      - frontend_node_modules:/workspace/node_modules
+    depends_on:
+      dev:
+        condition: service_healthy
 
   db:
     image: postgres:16-alpine
@@ -50,3 +79,4 @@ services:
 
 volumes:
   pgdata:
+  frontend_node_modules:

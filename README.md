@@ -55,10 +55,18 @@ on the first problem. Install dependencies first: `cargo fetch` (backend) and
 
 ```bash
 make check        # backend (fmt + clippy + test + build, --locked) + frontend gate
-make dev-up       # Postgres (+ Redis commented), dev sandbox
+make dev-up       # Postgres + API (:8083) + frontend dev server (:5173)
 make shell        # inside sandbox
 make opencode     # opencode inside sandbox
 ```
+
+`make dev-up` (Docker Compose) starts everything for development — the UI at
+<http://localhost:5173>, the API at <http://localhost:8083>, Postgres published
+on `5434`. The Vite dev server proxies `/api` (HTTP + WebSocket) and `/healthz`
+to the API container, so there is no CORS. All ports are overridable via `.env`
+(`HOST_PORT`, `FRONTEND_HOST_PORT`, `DB_HOST_PORT`).
+
+Without Docker, run each component directly:
 
 ```bash
 cd backend && cargo run    # reads DATABASE_URL + PORT (default 8080); runs migrations on start
@@ -71,7 +79,7 @@ cd frontend && npm run build           # type-check + production build
 cd frontend && npm run test            # Vitest unit tests
 ```
 
-Copy `.env.example` to `.env` for local runs.
+Copy `.env.example` to `.env` for local runs (Docker Compose reads it).
 
 ## Workflow
 

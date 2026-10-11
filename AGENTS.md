@@ -126,8 +126,11 @@ The agent runs at the workspace root. Docker is not available inside the sandbox
 | Service | Host | Container |
 |---------|------|-----------|
 | dev API | 8083 | 8080      |
+| frontend| 5173 | 5173      |
 | Postgres| 5434 | 5432      |
 | Redis   | 6381 | 6379      |
+
+<!-- keep column spacing for readability -->
 
 (Redis block is commented/optional; host ports overridable.)
 

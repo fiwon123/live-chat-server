@@ -23,12 +23,19 @@ the first problem. Dependencies must be installed first (`npm ci`).
 
 ## Development
 
-The dev server proxies `/api` (HTTP + WebSocket) and `/healthz` to the backend
-so the browser only ever talks to the Vite origin. Point it elsewhere with:
+The easiest way to run the whole stack is `make dev-up` from the repo root
+(Docker Compose starts Postgres + the API + this dev server); the UI is then at
+<http://localhost:5173>.
+
+To run the dev server on its own host, the Vite proxy forwards `/api` (HTTP +
+WebSocket) and `/healthz` to the backend so the browser only ever talks to the
+Vite origin. Point it elsewhere with:
 
 ```bash
 VITE_API_PROXY_TARGET=http://localhost:8083 npm run dev
 ```
+
+Inside Compose this is set to `http://dev:8080` (the API service name).
 
 Set `VITE_API_BASE` to call an absolute API base instead of the proxied `/api`.
 
