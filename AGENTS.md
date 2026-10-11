@@ -130,6 +130,8 @@ The agent runs at the workspace root. Docker is not available inside the sandbox
 | Postgres| 5434 | 5432      |
 | Redis   | 6381 | 6379      |
 
+<!-- keep column spacing for readability -->
+
 (Redis block is commented/optional; host ports overridable.)
 
 ## Key Conventions
