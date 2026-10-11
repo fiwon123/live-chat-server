@@ -1,9 +1,13 @@
 //! In-memory per-room broadcast registry (single server instance).
 //!
 //! Each room gets a `tokio::sync::broadcast` channel created lazily, plus a
-//! map of connected user ids -> usernames used to emit presence events.
+//! reference count of connected users per user id used to emit presence
+//! events. Presence is edge-triggered: `joined` on the first connection,
+//! `left` when the last connection for a user disappears, so multiple tabs
+//! from one user never produce spurious join/leave chatter.
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::sync::{Arc, Mutex};
 
 use tokio::sync::RwLock;
@@ -24,7 +28,8 @@ pub struct RoomRegistry {
 
 struct RoomState {
     tx: broadcast::Sender<WsOutgoing>,
-    users: Mutex<HashMap<Uuid, String>>,
+    /// user_id -> (username, number of open connections).
+    users: Mutex<HashMap<Uuid, (String, usize)>>,
 }
 
 impl RoomRegistry {
@@ -37,27 +42,59 @@ impl RoomRegistry {
         self.room(room_id).await.tx.subscribe()
     }
 
-    /// Announce a user joining the room (no-op when the user is already
-    /// connected, but the event is still emitted for duplicate connections).
+    /// Register a connection and announce `joined` on the first one only.
     pub async fn join(&self, room_id: Uuid, user_id: Uuid, username: String) {
         let room = self.room(room_id).await;
-        room.users.lock().unwrap().insert(user_id, username.clone());
-        let _ = room.tx.send(WsOutgoing::Presence {
-            event: "joined",
-            user: UserRef {
-                id: user_id,
-                username,
-            },
-        });
+        let first_connection = {
+            let mut users = room
+                .users
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            match users.entry(user_id) {
+                Entry::Occupied(mut entry) => {
+                    entry.get_mut().1 += 1;
+                    false
+                }
+                Entry::Vacant(entry) => {
+                    entry.insert((username.clone(), 1));
+                    true
+                }
+            }
+        };
+        if first_connection {
+            let _ = room.tx.send(WsOutgoing::Presence {
+                event: "joined",
+                user: UserRef {
+                    id: user_id,
+                    username,
+                },
+            });
+        }
     }
 
-    /// Announce a user leaving; emits nothing if they were not connected.
+    /// Unregister a connection and announce `left` when the last one goes.
     pub async fn leave(&self, room_id: Uuid, user_id: Uuid) {
         let Some(room) = self.rooms.read().await.get(&room_id).cloned() else {
             return;
         };
-        let removed = room.users.lock().unwrap().remove(&user_id);
-        if let Some(username) = removed {
+        let last_connection = {
+            let mut users = room
+                .users
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            match users.entry(user_id) {
+                Entry::Occupied(mut entry) if entry.get().1 > 1 => {
+                    entry.get_mut().1 -= 1;
+                    None
+                }
+                Entry::Occupied(entry) => {
+                    let (username, _) = entry.remove();
+                    Some(username)
+                }
+                Entry::Vacant(_) => None,
+            }
+        };
+        if let Some(username) = last_connection {
             let _ = room.tx.send(WsOutgoing::Presence {
                 event: "left",
                 user: UserRef {

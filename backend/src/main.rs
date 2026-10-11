@@ -32,8 +32,20 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("database migrations applied");
 
     let port = config.port;
-    let app = live_chat_server::build_router(AppState::new(pool, config))
-        .layer(tower_http::trace::TraceLayer::new_for_http());
+    let app = live_chat_server::build_router(AppState::new(pool, config)).layer(
+        tower_http::trace::TraceLayer::new_for_http().make_span_with(
+            |request: &axum::extract::Request| {
+                // The WebSocket handshake carries the JWT as a query parameter;
+                // log only the path, never the query string.
+                tracing::debug_span!(
+                    "http_request",
+                    method = %request.method(),
+                    path = %request.uri().path(),
+                    status = tracing::field::Empty,
+                )
+            },
+        ),
+    );
 
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", port)).await?;
     tracing::info!("listening on http://0.0.0.0:{}", port);

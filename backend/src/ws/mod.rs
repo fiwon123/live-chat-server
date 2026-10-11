@@ -81,10 +81,26 @@ pub async fn run_session(
     // broadcast lane.
     let (direct_tx, mut direct_rx) = mpsc::channel::<WsOutgoing>(32);
 
+    // Room-access is enforced on the receive path too: a session whose
+    // membership has been revoked (e.g. the user left the room over HTTP) is
+    // closed the moment the next message arrives, instead of silently
+    // receiving room content forever.
+    let send_memberships = RoomMemberships::new(pool.clone());
     let mut send_task = tokio::spawn(async move {
         loop {
             tokio::select! {
                 event = room_rx.recv() => match event {
+                    Ok(event @ WsOutgoing::Message { .. }) => {
+                        match send_memberships.is_member(room_id, user_id).await {
+                            Ok(true) => {}
+                            Ok(false) => break, // membership revoked: close the session
+                            Err(err) => {
+                                tracing::error!(error = ?err, "receive-side membership check failed");
+                                break;
+                            }
+                        }
+                        if send_json(&mut sender, &event).await.is_err() { break; }
+                    }
                     Ok(event) => {
                         if send_json(&mut sender, &event).await.is_err() { break; }
                     }
@@ -191,23 +207,27 @@ async fn handle_text(text: &str, ctx: &SessionCtx) {
     };
 
     if let Some(error) = error {
-        let _ = ctx.direct_tx.send(error).await;
+        // Errors are advisory; never let a full direct lane stall the receive
+        // loop (a client that does not read has no use for them anyway).
+        if ctx.direct_tx.try_send(error).is_err() {
+            tracing::debug!(room_id = %ctx.room_id, "ws client error lane full; dropping error event");
+        }
     }
 }
 
 async fn send_error(direct_tx: &mpsc::Sender<WsOutgoing>, message: &str) {
-    let _ = direct_tx
-        .send(WsOutgoing::Error {
-            message: message.to_string(),
-        })
-        .await;
+    let _ = direct_tx.try_send(WsOutgoing::Error {
+        message: message.to_string(),
+    });
 }
 
 fn parse_incoming(text: &str) -> Result<Incoming, serde_json::Error> {
     serde_json::from_str(text)
 }
 
-/// Validate a message body: trimmed, non-empty, at most [`MAX_MESSAGE_LEN`].
+/// Validate a message body: trimmed, non-empty, at most [`MAX_MESSAGE_LEN`],
+/// no control characters (mirrors room-name validation: embedded NULs must
+/// not reach Postgres).
 fn validate_body(body: &str) -> Result<String, AppError> {
     let body = body.trim().to_string();
     if body.is_empty() {
@@ -219,6 +239,11 @@ fn validate_body(body: &str) -> Result<String, AppError> {
         return Err(AppError::BadRequest(format!(
             "message must be at most {MAX_MESSAGE_LEN} characters"
         )));
+    }
+    if body.chars().any(char::is_control) {
+        return Err(AppError::BadRequest(
+            "message must not contain control characters".to_string(),
+        ));
     }
     Ok(body)
 }
@@ -253,5 +278,11 @@ mod tests {
         assert!(validate_body(&too_long).is_err());
         let at_limit = "x".repeat(super::MAX_MESSAGE_LEN);
         assert!(validate_body(&at_limit).is_ok());
+    }
+
+    #[test]
+    fn rejects_control_characters() {
+        assert!(validate_body("hello\u{0}world").is_err());
+        assert!(validate_body("tab\there").is_err());
     }
 }

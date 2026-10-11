@@ -1,5 +1,6 @@
 //! WebSocket chat flow over a real socket: broadcast isolation, presence,
-//! validation errors, and the save-before-broadcast guarantee.
+//! validation errors, revoked-membership teardown, and the save-before-
+//! broadcast guarantee.
 //!
 //! The server is spawned on an ephemeral port (`127.0.0.1:0`). Tests skip
 //! gracefully when no database is reachable.
@@ -127,6 +128,16 @@ async fn assert_no_event(stream: &mut WsStream, within: Duration) {
     }
 }
 
+/// Assert the remote end closed the connection (session torn down).
+async fn assert_stream_closed(stream: &mut WsStream) {
+    match tokio::time::timeout(Duration::from_secs(5), stream.next()).await {
+        Ok(None) => {}
+        Ok(Some(Ok(Message::Close(_)))) => {}
+        Ok(Some(Err(_))) => {}
+        other => panic!("expected session close, got: {other:?}"),
+    }
+}
+
 #[tokio::test]
 async fn handshake_rejects_bad_token_unknown_room_and_non_member() {
     let Some(server) = spawn_server().await else {
@@ -184,31 +195,38 @@ async fn broadcasts_only_within_room_and_persists() {
     .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
 
+    // Connect one client at a time and wait for its own `joined` presence —
+    // that is the server's signal that subscribe+join completed, so later
+    // connections cannot be missed (no cross-client ordering race).
     let mut alice = connect_ws(&server, &alice_token, &room_a).await;
-    let mut bob = connect_ws(&server, &bob_token, &room_a).await;
-    let mut carol = connect_ws(&server, &carol_token, &room_b).await;
+    let alice_joined = next_event_of_type(&mut alice, "presence").await;
+    assert_eq!(alice_joined["event"], "joined");
+    assert_eq!(alice_joined["user"]["username"], alice_name);
 
-    // Everyone sees their own join; Alice also sees Bob's join arrive.
-    let alice_first = next_event_of_type(&mut alice, "presence").await;
-    assert_eq!(alice_first["event"], "joined");
-    assert_eq!(alice_first["user"]["username"], alice_name);
-    let bob_first = next_event_of_type(&mut bob, "presence").await;
-    assert_eq!(bob_first["event"], "joined");
-    assert_eq!(bob_first["user"]["username"], bob_name);
-    let _ = next_event_of_type(&mut carol, "presence").await;
-    let alice_second = next_event_of_type(&mut alice, "presence").await;
-    assert_eq!(alice_second["user"]["username"], bob_name);
+    let mut bob = connect_ws(&server, &bob_token, &room_a).await;
+    let bob_joined = next_event_of_type(&mut bob, "presence").await;
+    assert_eq!(bob_joined["event"], "joined");
+    assert_eq!(bob_joined["user"]["username"], bob_name);
+    let alice_sees_bob = next_event_of_type(&mut alice, "presence").await;
+    assert_eq!(alice_sees_bob["event"], "joined");
+    assert_eq!(alice_sees_bob["user"]["username"], bob_name);
+
+    let mut carol = connect_ws(&server, &carol_token, &room_b).await;
+    let carol_joined = next_event_of_type(&mut carol, "presence").await;
+    assert_eq!(carol_joined["event"], "joined");
 
     // Bob disconnects; Alice gets the "left" presence event.
     drop(bob);
-    let left = next_event_of_type(&mut alice, "presence").await;
-    assert_eq!(left["event"], "left");
-    assert_eq!(left["user"]["username"], bob_name);
+    let bob_left = next_event_of_type(&mut alice, "presence").await;
+    assert_eq!(bob_left["event"], "left");
+    assert_eq!(bob_left["user"]["username"], bob_name);
 
-    // Alice is still connected; re-attach Bob.
+    // Bob reconnects; presence transition goes joined again.
     let mut bob = connect_ws(&server, &bob_token, &room_a).await;
     let _ = next_event_of_type(&mut bob, "presence").await;
-    let _ = next_event_of_type(&mut alice, "presence").await;
+    let bob_rejoined = next_event_of_type(&mut alice, "presence").await;
+    assert_eq!(bob_rejoined["event"], "joined");
+    assert_eq!(bob_rejoined["user"]["username"], bob_name);
 
     // Alice sends; both room-A clients get the identical persisted message.
     send_text(&mut alice, r#"{"type":"send","body":"hello from room A"}"#).await;
@@ -294,4 +312,108 @@ async fn invalid_sends_get_error_events_but_connection_survives() {
     let history = history.as_array().unwrap();
     assert_eq!(history.len(), 1);
     assert_eq!(history[0]["body"], "still here");
+}
+
+#[tokio::test]
+async fn revoked_membership_closes_session_without_delivery() {
+    let Some(server) = spawn_server().await else {
+        return;
+    };
+    let (alice_token, alice_name) = register_user(&server.app).await;
+    let (bob_token, _) = register_user(&server.app).await;
+
+    let (room_a, _) = create_room(&server.app, &alice_token, "room-a").await;
+    let (status, _) = request(
+        &server.app,
+        "POST",
+        &format!("/api/rooms/{room_a}/join"),
+        None,
+        Some(&bob_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let mut alice = connect_ws(&server, &alice_token, &room_a).await;
+    let _ = next_event_of_type(&mut alice, "presence").await;
+    let mut bob = connect_ws(&server, &bob_token, &room_a).await;
+    let _ = next_event_of_type(&mut bob, "presence").await;
+    let _ = next_event_of_type(&mut alice, "presence").await;
+
+    // Alice leaves the room over HTTP while her socket stays open.
+    let (status, _) = request(
+        &server.app,
+        "POST",
+        &format!("/api/rooms/{room_a}/leave"),
+        None,
+        Some(&alice_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // Bob sends: it reaches Bob (still a member)...
+    send_text(&mut bob, r#"{"type":"send","body":"after leave"}"#).await;
+    let event = next_event_of_type(&mut bob, "message").await;
+    assert_eq!(event["message"]["body"], "after leave");
+
+    // ...but Alice's session is torn down WITHOUT ever delivering it.
+    assert_stream_closed(&mut alice).await;
+
+    // Bob observes Alice's session end via presence.
+    let left = next_event_of_type(&mut bob, "presence").await;
+    assert_eq!(left["event"], "left");
+    assert_eq!(left["user"]["username"], alice_name);
+}
+
+#[tokio::test]
+async fn duplicate_connections_reference_count_presence() {
+    let Some(server) = spawn_server().await else {
+        return;
+    };
+    let (observer_token, observer_name) = register_user(&server.app).await;
+    let (y_token, y_name) = register_user(&server.app).await;
+
+    let (room_id, _) = create_room(&server.app, &observer_token, "dup").await;
+    let (status, _) = request(
+        &server.app,
+        "POST",
+        &format!("/api/rooms/{room_id}/join"),
+        None,
+        Some(&y_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let mut observer = connect_ws(&server, &observer_token, &room_id).await;
+    let joined = next_event_of_type(&mut observer, "presence").await;
+    assert_eq!(joined["user"]["username"], observer_name);
+
+    // Y opens a first connection: one `joined`.
+    let mut y1 = connect_ws(&server, &y_token, &room_id).await;
+    let joined = next_event_of_type(&mut y1, "presence").await;
+    assert_eq!(joined["event"], "joined");
+    assert_eq!(joined["user"]["username"], y_name);
+    let _ = next_event_of_type(&mut observer, "presence").await;
+
+    // Y opens a second connection: no duplicate `joined` anywhere.
+    let mut y2 = connect_ws(&server, &y_token, &room_id).await;
+    assert_no_event(&mut y2, Duration::from_millis(300)).await;
+    assert_no_event(&mut observer, Duration::from_millis(300)).await;
+
+    // A message proves the second connection is live and subscribed.
+    send_text(&mut y1, r#"{"type":"send","body":"both tabs"}"#).await;
+    for stream in [&mut y1, &mut y2] {
+        let event = next_event_of_type(stream, "message").await;
+        assert_eq!(event["message"]["body"], "both tabs");
+    }
+    let _ = next_event_of_type(&mut observer, "message").await;
+
+    // Closing the first connection must not emit a premature `left`.
+    drop(y1);
+    assert_no_event(&mut observer, Duration::from_millis(300)).await;
+
+    // Closing the last connection emits exactly one `left`.
+    drop(y2);
+    let left = next_event_of_type(&mut observer, "presence").await;
+    assert_eq!(left["event"], "left");
+    assert_eq!(left["user"]["username"], y_name);
 }

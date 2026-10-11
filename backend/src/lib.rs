@@ -26,8 +26,9 @@ use crate::ws::RoomRegistry;
 pub struct AppState {
     pub pool: PgPool,
     pub config: Arc<Config>,
-    /// In-memory per-room WebSocket registry (single server instance).
-    pub registry: Arc<RoomRegistry>,
+    /// In-memory per-room WebSocket registry (single server instance);
+    /// cheap to clone (its internals are already `Arc`-shared).
+    pub registry: RoomRegistry,
 }
 
 impl AppState {
@@ -35,7 +36,7 @@ impl AppState {
         Self {
             pool,
             config: Arc::new(config),
-            registry: Arc::new(RoomRegistry::new()),
+            registry: RoomRegistry::new(),
         }
     }
 }

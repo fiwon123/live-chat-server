@@ -56,17 +56,18 @@ pub async fn ws_handler(
         ));
     }
 
-    let registry = (*state.registry).clone();
+    let registry = state.registry.clone();
     let pool = state.pool.clone();
     let room_id = query.room_id;
     let username = user.username;
 
     tracing::info!(room_id = %room_id, user_id = %user_id, "ws connected");
-    Ok(
-        ws.on_upgrade(move |socket| {
-            run_session(socket, registry, pool, room_id, user_id, username)
-        }),
-    )
+    // Bound per-message allocation before JSON parsing; bodies are capped at
+    // MAX_MESSAGE_LEN (4 KB) but an oversized frame would otherwise allocate
+    // up to axum's 64 MiB default before the length check could reject it.
+    Ok(ws
+        .max_message_size(64 * 1024)
+        .on_upgrade(move |socket| run_session(socket, registry, pool, room_id, user_id, username)))
 }
 
 /// Routes nested under `/api`.
