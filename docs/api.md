@@ -2,14 +2,21 @@
 
 Base URL: `/api` (the lone health probe lives at `/healthz`).
 
-All request bodies and responses are JSON (`application/json`). Every error
-response uses the same shape:
+All request bodies and responses are JSON (`application/json`). The handlers'
+own error responses use a single shape:
 
 ```json
 { "error": "<client-safe message>" }
 ```
 
 Internal error details are logged server-side and never returned.
+
+> **Not every failure looks like that.** Request parsing is done by framework
+> extractors, whose rejections return **plain text** (not `{"error": ...}`):
+> a missing/incorrect `Content-Type: application/json` → `415`; a malformed
+> JSON body or a malformed `{id}`/`before` UUID → `400`; valid JSON of the wrong
+> shape → `422`. Clients should parse error bodies defensively. `Content-Type:
+> application/json` is **required** on `register`, `login`, and `POST /api/rooms`.
 
 ## Authentication
 
@@ -19,10 +26,11 @@ All endpoints except `register`, `login`, and `healthz` require a bearer token:
 Authorization: Bearer <jwt>
 ```
 
-Tokens are HS256 JWTs issued at register/login (3 endpoints below), signed with
+Tokens are HS256 JWTs issued at register and login, signed with
 `JWT_SECRET` and expiring **24 hours** after issue (`exp` is validated on every
 use). Set `JWT_SECRET` to a strong random value before deploying; the server
 logs a warning when it is unset (it then uses the committed dev-only default).
+The scheme is matched case-insensitively (`Bearer`/`bearer`).
 
 ### `POST /api/auth/register`
 
@@ -150,6 +158,12 @@ Handshake checks, in order, **before** the upgrade:
 
 A successful upgrade answers `101 Switching Protocols`.
 
+The request must be a genuine WebSocket upgrade (`Connection: Upgrade`,
+`Upgrade: websocket`, `Sec-WebSocket-Version`, `Sec-WebSocket-Key`); a plain
+`GET` to this path is rejected by request extraction (`400`/`426`) *before* the
+token check runs, and a missing or malformed `token`/`room_id` parameter yields
+a plain-text `400`.
+
 ### Client → server frames
 
 One message type, as a text frame:
@@ -217,4 +231,7 @@ periodic application-level heartbeats.
 
 - `RoomResponse`: `{ id, name, created_by, created_at, member }`
 - `MessageResponse`: `{ id, room_id, user_id, username, body, created_at }`
-- Error shape: `{ "error": "<message>" }` with status 400/401/403/404/409/500.
+- Path ids and the `before` cursor must be well-formed UUIDs.
+- Handler errors: `{ "error": "<message>" }` with status 400/401/403/404/409/500.
+- Extractor rejections (bad content-type/JSON/query/UUID): plain text with
+  400/415/422 (and 426 for a non-upgrade request to `/api/ws`).
