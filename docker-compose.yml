@@ -1,0 +1,51 @@
+name: live-chat-server
+
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["./scripts/dev-entrypoint.sh"]
+    ports:
+      - "${HOST_PORT:-8083}:8080"
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-live_chat}
+      - GH_TOKEN=${GH_TOKEN:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - HOME=/home/devuser
+    volumes:
+      - .:/workspace:cached
+      - ${HOST_HOME:-${HOME}}/.config/gh:/home/devuser/.config/gh:ro
+      - ${HOST_HOME:-${HOME}}/.opencode/bin/opencode:/usr/local/bin/opencode:ro
+      - ${HOST_HOME:-${HOME}}/.config/opencode:/home/devuser/.config/opencode:ro
+      - ${HOST_HOME:-${HOME}}/.gitconfig:/home/devuser/.gitconfig:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    tty: true
+    stdin_open: true
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-live_chat}
+    ports:
+      - "${DB_HOST_PORT:-5434}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-live_chat}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

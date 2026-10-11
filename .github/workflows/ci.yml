@@ -1,0 +1,62 @@
+name: CI (Rust)
+
+# Rust CI for a backend crate. Standard toolchain only:
+# rustfmt, clippy, test, build -- no third-party linters, so it runs on any
+# Rust project unchanged. `Cargo.lock` is the lockfile, so every cargo command
+# passes `--locked`: a run then fails if the lock is missing or stale instead of
+# quietly resolving a dependency set nobody reviewed.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Rust
+        # `stable` plus the two components the gate needs. The runner ships
+        # rustup; pin your toolchain in rust-toolchain.toml if you want CI and
+        # local development on the same version, not in two places.
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup component add rustfmt clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'backend'
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Lint
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build
+        run: cargo build --locked
+
+# A `paths:` filter that the change does not touch means this workflow does not
+# trigger at all, and a triggered run whose jobs are all gated out reports
+# `skipped`, not `passed`. Skipped is not passed: run `make check` locally
+# before relying on CI.
