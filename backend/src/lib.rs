@@ -44,13 +44,13 @@ impl AppState {
 /// Build the application router with the given shared state.
 pub fn build_router(state: AppState) -> Router {
     Router::new()
-        .route("/healthz", get(healthz))
+        .route("/health", get(health))
         .nest("/api", routes::router())
         .with_state(state)
 }
 
 /// Liveness probe: returns `200 OK` with a JSON body.
-async fn healthz(State(_state): State<AppState>) -> Json<serde_json::Value> {
+async fn health(State(_state): State<AppState>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "status": "ok",
         "service": "live-chat-server",

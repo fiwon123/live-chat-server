@@ -32,7 +32,7 @@ services:
     healthcheck:
       # `cargo run` (and its first build) can take a while before the API
       # accepts connections; the frontend waits for service_healthy.
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/healthz >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health >/dev/null || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 60

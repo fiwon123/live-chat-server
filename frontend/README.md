@@ -28,7 +28,7 @@ The easiest way to run the whole stack is `make dev-up` from the repo root
 <http://localhost:5173>.
 
 To run the dev server on its own host, the Vite proxy forwards `/api` (HTTP +
-WebSocket) and `/healthz` to the backend so the browser only ever talks to the
+WebSocket) and `/health` to the backend so the browser only ever talks to the
 Vite origin. Point it elsewhere with:
 
 ```bash

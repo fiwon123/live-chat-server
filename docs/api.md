@@ -1,6 +1,6 @@
 # API Reference
 
-Base URL: `/api` (the lone health probe lives at `/healthz`).
+Base URL: `/api` (the lone health probe lives at `/health`).
 
 All request bodies and responses are JSON (`application/json`). The handlers'
 own error responses use a single shape:
@@ -20,7 +20,7 @@ Internal error details are logged server-side and never returned.
 
 ## Authentication
 
-All endpoints except `register`, `login`, and `healthz` require a bearer token:
+All endpoints except `register`, `login`, and `health` require a bearer token:
 
 ```
 Authorization: Bearer <jwt>
@@ -223,7 +223,7 @@ periodic application-level heartbeats.
 
 ## Health
 
-### `GET /healthz`
+### `GET /health`
 
 `200` with `{ "status": "ok", "service": "live-chat-server", "version": "<semver>" }`.
 

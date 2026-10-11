@@ -24,7 +24,7 @@ reconnecting. A React + Vite + TypeScript client ships alongside the backend. Se
   timestamps), per-message validation and membership re-checks, presence
   join/leave events, revoked-membership teardown.
 - **Observability**: structured `tracing` logs (connect/disconnect, errors,
-  broadcasts); `/healthz` liveness probe.
+  broadcasts); `/health` liveness probe.
 - **Frontend**: React 19 + Vite + TS SPA — register/login, room
   list/create/join, live chat (history, presence, reconnect with backoff), a
   typed REST + WebSocket client, and Vitest unit tests. The dev server proxies
@@ -62,7 +62,7 @@ make opencode     # opencode inside sandbox
 
 `make dev-up` (Docker Compose) starts everything for development — the UI at
 <http://localhost:5173>, the API at <http://localhost:8083>, Postgres published
-on `5434`. The Vite dev server proxies `/api` (HTTP + WebSocket) and `/healthz`
+on `5434`. The Vite dev server proxies `/api` (HTTP + WebSocket) and `/health`
 to the API container, so there is no CORS. All ports are overridable via `.env`
 (`HOST_PORT`, `FRONTEND_HOST_PORT`, `DB_HOST_PORT`).
 
