@@ -25,10 +25,10 @@ pub struct RoomResponse {
 }
 
 impl RoomResponse {
-    fn from_storage(room: &crate::storage::RoomWithMembership) -> Self {
+    fn from_storage(room: crate::storage::RoomWithMembership) -> Self {
         Self {
             id: room.id,
-            name: room.name.clone(),
+            name: room.name,
             created_by: room.created_by,
             created_at: room.created_at,
             member: room.member,
@@ -100,7 +100,7 @@ pub async fn list_rooms(
 ) -> Result<Json<Vec<RoomResponse>>, AppError> {
     let service = room_service(&state);
     let rooms = service.list(user.id).await?;
-    let response: Vec<RoomResponse> = rooms.iter().map(RoomResponse::from_storage).collect();
+    let response: Vec<RoomResponse> = rooms.into_iter().map(RoomResponse::from_storage).collect();
     Ok(Json(response))
 }
 
@@ -112,7 +112,7 @@ pub async fn get_room(
 ) -> Result<Json<RoomResponse>, AppError> {
     let service = room_service(&state);
     let room = service.get(room_id, user.id).await?;
-    Ok(Json(RoomResponse::from_storage(&room)))
+    Ok(Json(RoomResponse::from_storage(room)))
 }
 
 /// `POST /api/rooms/{id}/join`

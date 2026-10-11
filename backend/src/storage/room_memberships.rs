@@ -27,7 +27,7 @@ impl RoomMemberships {
     }
 
     /// Remove a user from a room (idempotent). Returns the number of rows
-    /// deleted so callers can tell whether the user was actually a member.
+    /// deleted.
     pub async fn leave(&self, room_id: Uuid, user_id: Uuid) -> Result<u64, sqlx::Error> {
         let result = sqlx::query!(
             r#"DELETE FROM room_memberships

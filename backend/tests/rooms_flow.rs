@@ -227,11 +227,13 @@ async fn history_requires_membership() {
     let (token, _) = register_user(&app).await;
     let (outsider, _) = register_user(&app).await;
 
+    // A members-only room: join is open by design, so an outsider who has not
+    // joined is the interesting case here.
     let (status, body) = request(
         &app,
         "POST",
         "/api/rooms",
-        Some(serde_json::json!({ "name": "private" })),
+        Some(serde_json::json!({ "name": "members-only" })),
         Some(&token),
     )
     .await;
@@ -281,16 +283,21 @@ async fn history_returns_seeded_messages_with_authors() {
 
     // Seed messages directly through the pool (there is no send endpoint yet;
     // the WebSocket issue adds it). Runtime query, not the compile-time macro,
-    // so the offline sqlx cache is unaffected.
+    // so the offline sqlx cache is unaffected. Explicit, spaced timestamps keep
+    // the ordering deterministic regardless of how close the inserts land.
     let pool = &app.pool;
     for i in 0..3 {
-        sqlx::query("INSERT INTO messages (room_id, user_id, body) VALUES ($1, $2, $3)")
-            .bind(room_id_uuid)
-            .bind(uuid::Uuid::parse_str(user_id).unwrap())
-            .bind(format!("hello {i}"))
-            .execute(pool)
-            .await
-            .unwrap();
+        let created_at = chrono::Utc::now() - chrono::Duration::seconds((2 - i) as i64);
+        sqlx::query(
+            "INSERT INTO messages (room_id, user_id, body, created_at) VALUES ($1, $2, $3, $4)",
+        )
+        .bind(room_id_uuid)
+        .bind(uuid::Uuid::parse_str(user_id).unwrap())
+        .bind(format!("hello {i}"))
+        .bind(created_at)
+        .execute(pool)
+        .await
+        .unwrap();
     }
 
     let (status, messages) = request(
