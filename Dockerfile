@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.6
-FROM rust:1.83-bookworm
+FROM rust:1.99-bookworm
 
 ARG GH_CLI_VERSION=v2.102.0
 ARG TARGETARCH

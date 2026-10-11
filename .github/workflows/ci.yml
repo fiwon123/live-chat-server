@@ -27,6 +27,11 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      # Resolve sqlx compile-time query macros from the committed `.sqlx/`
+      # cache. CI has no database service; this makes that explicit and fails
+      # loudly if a query changed without regenerating the cache.
+      SQLX_OFFLINE: "true"
     steps:
       - uses: actions/checkout@v7
 
