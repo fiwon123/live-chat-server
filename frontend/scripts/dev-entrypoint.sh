@@ -7,8 +7,16 @@
 # resolved dependencies; reinstall whenever the lockfile hash changes.
 set -eu
 
+if [ ! -f package-lock.json ]; then
+  echo "[frontend] package-lock.json not found — is the source mounted?" >&2
+  exit 1
+fi
+
 lock_hash_file="node_modules/.lock-hash"
-want_hash="$(sha256sum package-lock.json | cut -d' ' -f1)"
+# Avoid a pipeline so a sha256sum failure is not masked by the last command's
+# status (POSIX sh has no pipefail).
+want_hash="$(sha256sum package-lock.json)"
+want_hash="${want_hash%% *}"
 
 have_hash=""
 if [ -f "$lock_hash_file" ]; then
