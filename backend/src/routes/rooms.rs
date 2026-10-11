@@ -43,7 +43,7 @@ pub struct CreateRoomRequest {
 }
 
 /// Public representation of a message with its author's username.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MessageResponse {
     pub id: Uuid,
     pub room_id: Uuid,
