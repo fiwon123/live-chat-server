@@ -1,7 +1,18 @@
-use sqlx::PgPool;
+use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
 
 use crate::models::Message;
+
+/// A message joined with its author's username, for history responses.
+#[derive(Debug, Clone, FromRow)]
+pub struct MessageWithAuthor {
+    pub id: Uuid,
+    pub room_id: Uuid,
+    pub user_id: Uuid,
+    pub username: String,
+    pub body: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
 
 /// Message persistence operations.
 #[derive(Debug, Clone)]
@@ -69,6 +80,52 @@ impl Messages {
                        FROM messages
                        WHERE room_id = $1
                        ORDER BY created_at DESC, id DESC
+                       LIMIT $2"#,
+                    room_id,
+                    limit
+                )
+                .fetch_all(&self.pool)
+                .await
+            }
+        }
+    }
+
+    /// Newest-first history with the author's username, capped at `limit`
+    /// (1..=100), optionally before a cursor message.
+    pub async fn list_with_author(
+        &self,
+        room_id: Uuid,
+        before: Option<Uuid>,
+        limit: i64,
+    ) -> Result<Vec<MessageWithAuthor>, sqlx::Error> {
+        let limit = limit.clamp(1, 100);
+        match before {
+            Some(cursor) => {
+                sqlx::query_as!(
+                    MessageWithAuthor,
+                    r#"SELECT m.id, m.room_id, m.user_id, u.username, m.body, m.created_at
+                       FROM messages m
+                       JOIN users u ON u.id = m.user_id
+                       JOIN messages c ON c.id = $2 AND c.room_id = $1
+                       WHERE m.room_id = $1
+                         AND (m.created_at, m.id) < (c.created_at, c.id)
+                       ORDER BY m.created_at DESC, m.id DESC
+                       LIMIT $3"#,
+                    room_id,
+                    cursor,
+                    limit
+                )
+                .fetch_all(&self.pool)
+                .await
+            }
+            None => {
+                sqlx::query_as!(
+                    MessageWithAuthor,
+                    r#"SELECT m.id, m.room_id, m.user_id, u.username, m.body, m.created_at
+                       FROM messages m
+                       JOIN users u ON u.id = m.user_id
+                       WHERE m.room_id = $1
+                       ORDER BY m.created_at DESC, m.id DESC
                        LIMIT $2"#,
                     room_id,
                     limit

@@ -14,13 +14,21 @@ impl Rooms {
         Self { pool }
     }
 
-    /// Create a room; the caller adds the creator as a member.
+    /// Create a room and add the creator as its first member in a single
+    /// atomic statement — a room row can never exist without its creator's
+    /// membership.
     pub async fn create(&self, name: &str, created_by: Uuid) -> Result<Room, sqlx::Error> {
         sqlx::query_as!(
             Room,
-            r#"INSERT INTO rooms (name, created_by)
-               VALUES ($1, $2)
-               RETURNING id, name, created_by, created_at"#,
+            r#"WITH new_room AS (
+                   INSERT INTO rooms (name, created_by)
+                   VALUES ($1, $2)
+                   RETURNING id, name, created_by, created_at
+               ), join_creator AS (
+                   INSERT INTO room_memberships (room_id, user_id)
+                   SELECT id, $2 FROM new_room
+               )
+               SELECT id, name, created_by, created_at FROM new_room"#,
             name,
             created_by
         )
