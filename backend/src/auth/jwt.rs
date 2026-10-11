@@ -22,9 +22,6 @@ pub struct Claims {
     pub exp: i64,
 }
 
-/// Subject used to equalize work when a login names an unknown user.
-pub const UNKNOWN_USER_SUBJECT: &str = "00000000-0000-0000-0000-000000000000";
-
 /// Sign a token for `user_id`, expiring `ttl` from now.
 pub fn create_token(secret: &str, user_id: Uuid, ttl: Duration) -> Result<String, AppError> {
     let now: DateTime<Utc> = Utc::now();
@@ -88,5 +85,24 @@ mod tests {
     #[test]
     fn rejects_garbage() {
         assert!(verify_token(SECRET, "not.a.jwt").is_err());
+    }
+
+    #[test]
+    fn rejects_token_signed_with_a_different_algorithm() {
+        // A token whose header claims HS384 must not validate under our
+        // HS256-only policy (algorithm pinning / confusion defense).
+        let now = Utc::now();
+        let claims = Claims {
+            sub: Uuid::new_v4().to_string(),
+            iat: now.timestamp(),
+            exp: (now + TOKEN_TTL).timestamp(),
+        };
+        let token = encode(
+            &Header::new(Algorithm::HS384),
+            &claims,
+            &EncodingKey::from_secret(SECRET.as_bytes()),
+        )
+        .unwrap();
+        assert!(verify_token(SECRET, &token).is_err());
     }
 }

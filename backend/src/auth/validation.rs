@@ -10,13 +10,19 @@ pub const MAX_PASSWORD_LEN: usize = 128;
 /// Minimum accepted password length.
 pub const MIN_PASSWORD_LEN: usize = 8;
 
+/// Maximum accepted username length.
+pub const MAX_USERNAME_LEN: usize = 32;
+
+/// Minimum accepted username length.
+pub const MIN_USERNAME_LEN: usize = 3;
+
 /// Validate a username: 3-32 chars of `[a-z0-9_]`.
 pub fn validate_username(username: &str) -> Result<(), AppError> {
     let len = username.chars().count();
-    if !(3..=32).contains(&len) {
-        return Err(AppError::BadRequest(
-            "username must be between 3 and 32 characters".to_string(),
-        ));
+    if !(MIN_USERNAME_LEN..=MAX_USERNAME_LEN).contains(&len) {
+        return Err(AppError::BadRequest(format!(
+            "username must be between {MIN_USERNAME_LEN} and {MAX_USERNAME_LEN} characters"
+        )));
     }
     if !username
         .chars()

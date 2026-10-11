@@ -29,12 +29,43 @@ impl FromRequestParts<AppState> for AuthUser {
             .headers
             .get(AUTHORIZATION)
             .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.strip_prefix("Bearer "))
-            .map(str::trim)
-            .filter(|token| !token.is_empty())
+            .and_then(parse_bearer)
             .ok_or_else(|| AppError::Unauthorized("missing bearer token".to_string()))?;
 
         let id = jwt::verify_token(&state.config.jwt_secret, token)?;
         Ok(AuthUser { id })
+    }
+}
+
+/// Extract the credentials from an `Authorization` header value.
+///
+/// The scheme is compared case-insensitively per RFC 7235, so `bearer`, `Bearer`,
+/// and `BEARER` are all accepted.
+fn parse_bearer(header: &str) -> Option<&str> {
+    let (scheme, token) = header.split_once(' ')?;
+    if !scheme.eq_ignore_ascii_case("bearer") {
+        return None;
+    }
+    let token = token.trim();
+    (!token.is_empty()).then_some(token)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_bearer;
+
+    #[test]
+    fn accepts_any_case_scheme() {
+        assert_eq!(parse_bearer("Bearer abc.def.ghi"), Some("abc.def.ghi"));
+        assert_eq!(parse_bearer("bearer abc.def.ghi"), Some("abc.def.ghi"));
+        assert_eq!(parse_bearer("BEARER abc.def.ghi"), Some("abc.def.ghi"));
+    }
+
+    #[test]
+    fn rejects_missing_or_malformed() {
+        assert_eq!(parse_bearer("Basic abc"), None);
+        assert_eq!(parse_bearer("Bearertoken"), None);
+        assert_eq!(parse_bearer("Bearer "), None);
+        assert_eq!(parse_bearer(""), None);
     }
 }

@@ -16,6 +16,12 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = Config::from_env();
+    if config.uses_default_jwt_secret() {
+        tracing::warn!(
+            "JWT_SECRET is unset; using the committed insecure default. \
+             Set JWT_SECRET to a strong random value before deploying."
+        );
+    }
     // The full DATABASE_URL may contain credentials; log only the port.
     tracing::info!(port = config.port, "starting live-chat-server");
 

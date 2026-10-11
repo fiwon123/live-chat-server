@@ -2,7 +2,9 @@
 
 use uuid::Uuid;
 
-use crate::auth::{jwt, password, validation};
+use crate::auth::jwt;
+use crate::auth::password;
+use crate::auth::validation::{self, MAX_USERNAME_LEN};
 use crate::error::AppError;
 use crate::models::User;
 use crate::storage::Users;
@@ -65,6 +67,14 @@ impl AuthService {
     /// missing-user path still performs a password verification against a
     /// dummy hash so response time does not reveal whether the user exists.
     pub async fn login(&self, username: &str, plaintext: &str) -> Result<Authenticated, AppError> {
+        // Bound the work before touching the database or argon2: reject
+        // over-long input with the same generic error as a wrong password.
+        if username.chars().count() > MAX_USERNAME_LEN
+            || plaintext.chars().count() > validation::MAX_PASSWORD_LEN
+        {
+            return Err(invalid_credentials());
+        }
+
         match self.users.find_by_username(username).await? {
             Some(user) if password::verify_password(plaintext, &user.password_hash) => {
                 let token = self.issue_token(user.id)?;
