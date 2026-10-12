@@ -43,6 +43,15 @@ describe("orderRooms", () => {
     expect(ids(orderRooms(rooms, {}))).toEqual(["new", "old"]);
   });
 
+  it("orders non-member rooms by unread then recency too", () => {
+    const rooms = [
+      room({ id: "a" }),
+      room({ id: "b" }),
+      room({ id: "c", created_at: "2026-03-01T00:00:00.000Z" }),
+    ];
+    expect(ids(orderRooms(rooms, { a: 2, b: 7, c: 2 }))).toEqual(["b", "c", "a"]);
+  });
+
   it("does not mutate the input array", () => {
     const rooms = [room({ id: "a" }), room({ id: "b", member: true })];
     orderRooms(rooms, {});

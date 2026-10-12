@@ -121,7 +121,7 @@ export function RoomList({
       )}
 
       {!loading && rooms.length > 0 && total === 0 && (
-        <p className="muted rooms__none">No rooms match “{query}”.</p>
+        <p className="muted rooms__none">No rooms match “{filter.trim()}”.</p>
       )}
 
       <ul className="rooms__list">
@@ -163,6 +163,7 @@ export function RoomList({
         <button
           type="button"
           className="rooms__more"
+          aria-expanded={expanded}
           onClick={() => setExpanded((value) => !value)}
         >
           {expanded ? "Show fewer" : `Show ${hiddenCount} more`}
