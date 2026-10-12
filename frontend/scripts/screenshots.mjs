@@ -19,6 +19,12 @@ import { fileURLToPath } from "node:url";
 
 import { chromium } from "@playwright/test";
 
+if (typeof WebSocket !== "function") {
+  throw new Error(
+    "this script needs the global WebSocket (Node 22+); run it with Node 22 or newer",
+  );
+}
+
 const ORIGIN = process.env.VITE_ORIGIN ?? "http://localhost:5173";
 const VIEWPORT = { width: 1280, height: 800 };
 const OUT_DIR =
@@ -41,7 +47,10 @@ async function waitForStack() {
   let lastError = null;
   while (Date.now() < deadline) {
     try {
-      const [origin, health] = await Promise.all([fetch(ORIGIN), fetch(`${ORIGIN}/health`)]);
+      const [origin, health] = await Promise.all([
+        fetch(ORIGIN, { signal: AbortSignal.timeout(3_000) }),
+        fetch(`${ORIGIN}/health`, { signal: AbortSignal.timeout(3_000) }),
+      ]);
       if (origin.ok && health.ok) {
         return;
       }
@@ -92,7 +101,7 @@ async function register(handle) {
     method: "POST",
     body: { username, password: PASSWORD },
   });
-  return { token: registered.token, id: registered.user.id, username };
+  return { token: registered.token, id: registered.user.id, username, password: PASSWORD };
 }
 
 /**
@@ -117,7 +126,15 @@ function sendFrames(token, roomId, frames) {
       }
     });
     socket.addEventListener("message", (event) => {
-      const data = JSON.parse(event.data);
+      let data;
+      try {
+        data = JSON.parse(event.data);
+      } catch {
+        clearTimeout(timer);
+        socket.close();
+        reject(new Error("seed socket sent non-JSON data"));
+        return;
+      }
       events.push(data);
       if (events.filter((item) => item.type === "message").length >= expectedSends) {
         clearTimeout(timer);
@@ -128,6 +145,7 @@ function sendFrames(token, roomId, frames) {
     socket.addEventListener("close", () => clearTimeout(timer));
     socket.addEventListener("error", () => {
       clearTimeout(timer);
+      socket.close();
       reject(new Error("seed WebSocket errored"));
     });
   });
@@ -177,7 +195,7 @@ async function captureChat(page, roomName, name) {
   await row.first().waitFor();
   await row.first().click();
   await page.locator(".message").first().waitFor();
-  await page.locator(".status-live").waitFor();
+  await page.locator(".status-open").waitFor();
   await sleep(300);
   await page.screenshot({ path: png(name) });
 }
@@ -229,34 +247,37 @@ async function main() {
     );
   }
 
-  // Dark theme: auth, room list with unread badge, then the live chat.  Bob
-  // marks the room read while Alice is watching so "Seen by bob" appears.
-  const dark = await newContext(browser, "dark");
-  const darkPage = await dark.newPage();
-  await captureAuth(darkPage, "01-auth-dark.png");
-  await login(darkPage, alice);
-  await captureRooms(darkPage, roomName, "03-rooms-dark.png");
-  await captureChat(darkPage, roomName, "04-chat-dark.png");
-  await api(`/rooms/${room.id}/read`, {
-    method: "POST",
-    token: bob.token,
-    body: { message_id: bobMsgId },
-  });
-  await darkPage.locator(".message__seen", { hasText: "Seen by bob" }).waitFor();
-  await sleep(250);
-  await darkPage.screenshot({ path: png("05-chat-seen-dark.png") });
-  await dark.close();
+  try {
+    // Dark theme: auth, room list with unread badge, then the live chat.  Bob
+    // marks the room read while Alice is watching so "Seen by bob" appears.
+    const dark = await newContext(browser, "dark");
+    const darkPage = await dark.newPage();
+    await captureAuth(darkPage, "01-auth-dark.png");
+    await login(darkPage, alice);
+    await captureRooms(darkPage, roomName, "03-rooms-dark.png");
+    await captureChat(darkPage, roomName, "04-chat-dark.png");
+    await api(`/rooms/${room.id}/read`, {
+      method: "POST",
+      token: bob.token,
+      body: { message_id: bobMsgId },
+    });
+    await darkPage.locator(".message__seen", { hasText: "Seen by bob" }).waitFor();
+    await sleep(250);
+    await darkPage.screenshot({ path: png("05-chat-seen-dark.png") });
+    await dark.close();
 
-  // Light theme: auth + the same chat.
-  const light = await newContext(browser, "light");
-  const lightPage = await light.newPage();
-  await captureAuth(lightPage, "02-auth-light.png");
-  await login(lightPage, alice);
-  await captureChat(lightPage, roomName, "06-chat-light.png");
-  await light.close();
+    // Light theme: auth + the same chat.
+    const light = await newContext(browser, "light");
+    const lightPage = await light.newPage();
+    await captureAuth(lightPage, "02-auth-light.png");
+    await login(lightPage, alice);
+    await captureChat(lightPage, roomName, "06-chat-light.png");
+    await light.close();
 
-  await browser.close();
-  console.log(`Saved screenshots to ${OUT_DIR}`);
+    console.log(`Saved screenshots to ${OUT_DIR}`);
+  } finally {
+    await browser.close();
+  }
 }
 
 main().catch((error) => {
