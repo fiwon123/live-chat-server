@@ -80,11 +80,6 @@
   cursor: pointer;
 }
 
-.rooms form button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .rooms ul {
   list-style: none;
   margin: 0;

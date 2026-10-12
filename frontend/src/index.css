@@ -5,6 +5,7 @@
   --accent-bright: #5eead4;
   --accent-soft: rgba(45, 212, 191, 0.14);
   --accent-softer: rgba(45, 212, 191, 0.07);
+  --accent-border: rgba(45, 212, 191, 0.22);
   --accent-contrast: #04231f;
   --accent-gradient: linear-gradient(135deg, #5eead4 0%, #14b8a6 100%);
 
@@ -12,14 +13,16 @@
   --bg: #0a1113;
   --panel: #101b1e;
   --panel-2: #152126;
+  --panel-hover: #1a2830;
   --border: #1f3036;
   --border-strong: #2b4249;
+  --border-hover: #3a565f;
   --overlay: rgba(4, 10, 11, 0.72);
 
   /* ---- Text ---- */
   --text: #e6f1ef;
   --muted: #8ba39f;
-  --faint: #5f7a76;
+  --faint: #6f8a85;
 
   /* ---- Status ---- */
   --good: #34d399;
@@ -119,7 +122,7 @@ select {
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: #3a565f;
+  background: var(--border-hover);
   background-clip: padding-box;
 }
 

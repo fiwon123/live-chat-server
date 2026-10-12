@@ -117,7 +117,7 @@ button:disabled {
 
 .btn:hover:not(:disabled) {
   border-color: var(--border-strong);
-  background: #1a2830;
+  background: var(--panel-hover);
 }
 
 .btn:active:not(:disabled) {

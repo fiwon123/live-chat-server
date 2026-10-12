@@ -100,8 +100,9 @@ function App() {
 
   if (auth.status === "loading") {
     return (
-      <div className="splash">
+      <div className="splash" role="status">
         <Logo size={34} />
+        <span className="visually-hidden">Loading…</span>
       </div>
     );
   }

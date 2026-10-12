@@ -112,7 +112,7 @@
 .message.own {
   align-self: flex-end;
   background: var(--accent-soft);
-  border-color: rgba(45, 212, 191, 0.22);
+  border-color: var(--accent-border);
 }
 
 .message .meta {
@@ -156,9 +156,4 @@
   padding: 0 1.1rem;
   font-weight: 600;
   cursor: pointer;
-}
-
-.composer button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }

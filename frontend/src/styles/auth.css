@@ -64,8 +64,3 @@
   font-weight: 600;
   cursor: pointer;
 }
-
-.login button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
