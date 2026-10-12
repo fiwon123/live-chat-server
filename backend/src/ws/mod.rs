@@ -1,12 +1,16 @@
-//! Real-time chat: the WebSocket session loop and the in-memory per-room
-//! broadcast registry.
+//! Real-time chat: the WebSocket session loop and the per-room broadcast
+//! registry.
 //!
-//! Single-instance by design: room connections and broadcast channels live in
-//! memory only. Multi-instance fan-out via Redis Pub/Sub is a later milestone.
+//! By default room connections and broadcast channels live in memory only.
+//! When `REDIS_URL` is configured, room events fan out through Redis Pub/Sub so
+//! a second server instance can serve the same rooms (see
+//! [`registry::RoomRegistry`] and `pubsub`).
 
+pub mod pubsub;
 pub mod registry;
 
-pub use registry::RoomRegistry;
+pub use pubsub::{RedisPubSub, RedisPubSubError, RoomSubscriber};
+pub use registry::{RecvOutcome, RoomEvents, RoomRegistry};
 
 use std::time::{Duration, Instant};
 
@@ -14,9 +18,8 @@ use axum::Error as AxumError;
 use axum::extract::ws::{Message as WsMessage, WebSocket};
 use futures_util::stream::SplitSink;
 use futures_util::{SinkExt, StreamExt};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -35,20 +38,22 @@ pub const MAX_MESSAGE_LEN: usize = 4000;
 const TYPING_THROTTLE: Duration = Duration::from_millis(1500);
 
 /// A user reference embedded in presence events.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserRef {
     pub id: Uuid,
     pub username: String,
 }
 
-/// Events the server sends to a client.
-#[derive(Debug, Clone, Serialize)]
+/// Events the server sends to a client. Serialized both to the socket and to
+/// the pub/sub channel, so the wire format doubles as the cross-instance
+/// payload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum WsOutgoing {
     /// A chat message persisted and broadcast to the room.
     Message { message: MessageResponse },
     /// A user joined or left the room.
-    Presence { event: &'static str, user: UserRef },
+    Presence { event: String, user: UserRef },
     /// A user is composing a message (ephemeral; not persisted).
     Typing { user: UserRef },
     /// A reaction was added (`added: true`) or removed from a message.
@@ -105,8 +110,10 @@ pub async fn run_session(
     user_id: Uuid,
     username: String,
 ) {
-    // Subscribe before announcing the join so no room event is missed.
-    let mut room_rx = registry.subscribe(room_id).await;
+    // Subscribe before announcing the join so no room event is missed. With
+    // Redis configured this is a per-session pub/sub subscription to the
+    // room's channel; otherwise it is the in-memory room channel.
+    let mut room_events = registry.events(room_id).await;
     registry.join(room_id, user_id, username.clone()).await;
 
     let (mut sender, mut receiver) = socket.split();
@@ -122,8 +129,8 @@ pub async fn run_session(
     let mut send_task = tokio::spawn(async move {
         loop {
             tokio::select! {
-                event = room_rx.recv() => match event {
-                    Ok(event @ WsOutgoing::Message { .. }) => {
+                outcome = room_events.recv() => match outcome {
+                    RecvOutcome::Event(event @ WsOutgoing::Message { .. }) => {
                         match send_memberships.is_member(room_id, user_id).await {
                             Ok(true) => {}
                             Ok(false) => break, // membership revoked: close the session
@@ -134,17 +141,17 @@ pub async fn run_session(
                         }
                         if send_json(&mut sender, &event).await.is_err() { break; }
                     }
-                    Ok(event) => {
+                    RecvOutcome::Event(event) => {
                         // A user does not need their own typing echoed back.
                         if matches!(&event, WsOutgoing::Typing { user } if user.id == user_id) {
                             continue;
                         }
                         if send_json(&mut sender, &event).await.is_err() { break; }
                     }
-                    Err(RecvError::Lagged(skipped)) => {
+                    RecvOutcome::Lagged(skipped) => {
                         tracing::warn!(room_id = %room_id, skipped, "ws client lagged behind broadcast");
                     }
-                    Err(RecvError::Closed) => break,
+                    RecvOutcome::Closed => break,
                 },
                 Some(event) = direct_rx.recv() => {
                     if send_json(&mut sender, &event).await.is_err() { break; }

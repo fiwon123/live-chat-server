@@ -26,11 +26,9 @@ pub struct TestApp {
     pub pool: PgPool,
 }
 
-/// Build the app against `DATABASE_URL`, migrating first.
-///
-/// Returns `None` (and prints why) when no database is reachable, so callers
-/// can skip gracefully.
-pub async fn test_app() -> Option<TestApp> {
+/// Connect to `DATABASE_URL`, migrating first. Returns `None` (and prints why)
+/// when no database is reachable, so callers can skip gracefully.
+pub async fn connect_db() -> Option<PgPool> {
     let url = match std::env::var("DATABASE_URL") {
         Ok(url) if !url.is_empty() => url,
         _ => {
@@ -56,9 +54,31 @@ pub async fn test_app() -> Option<TestApp> {
         return None;
     }
 
+    Some(pool)
+}
+
+/// Build the app against `DATABASE_URL`, migrating first.
+///
+/// Returns `None` (and prints why) when no database is reachable, so callers
+/// can skip gracefully.
+pub async fn test_app() -> Option<TestApp> {
+    let pool = connect_db().await?;
+
     let mut config = Config::from_env();
     config.jwt_secret = "integration-test-secret".to_string();
     let router = build_router(AppState::new(pool.clone(), config));
+
+    Some(TestApp { router, pool })
+}
+
+/// Build an app whose room events fan out through Redis Pub/Sub instead of the
+/// in-memory channels. `redis` must already be connected.
+pub async fn test_app_with_redis(redis: live_chat_server::ws::RedisPubSub) -> Option<TestApp> {
+    let pool = connect_db().await?;
+
+    let mut config = Config::from_env();
+    config.jwt_secret = "integration-test-secret".to_string();
+    let router = build_router(AppState::with_redis(pool.clone(), config, redis));
 
     Some(TestApp { router, pool })
 }

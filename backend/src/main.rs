@@ -31,8 +31,30 @@ async fn main() -> anyhow::Result<()> {
     sqlx::migrate!("./migrations").run(&pool).await?;
     tracing::info!("database migrations applied");
 
-    let port = config.port;
-    let app = live_chat_server::build_router(AppState::new(pool, config)).layer(
+    let state = match &config.redis_url {
+        Some(url) => {
+            // Do not log the URL itself; it may carry a password. This log line
+            // is the only place broadcasting mode is surfaced to ops.
+            match live_chat_server::ws::RedisPubSub::connect(url).await {
+                Ok(redis) => {
+                    tracing::info!("room broadcasting: redis pub/sub enabled");
+                    AppState::with_redis(pool, config, redis)
+                }
+                Err(err) => {
+                    tracing::warn!(error = ?err, "redis unreachable; falling back to in-memory broadcasting");
+                    AppState::new(pool, config)
+                }
+            }
+        }
+        None => {
+            tracing::info!("room broadcasting: in-memory (single instance)");
+            AppState::new(pool, config)
+        }
+    };
+
+    // `state` owns the config behind an `Arc`; read the port from it.
+    let port = state.config.port;
+    let app = live_chat_server::build_router(state).layer(
         tower_http::trace::TraceLayer::new_for_http().make_span_with(
             |request: &axum::extract::Request| {
                 // The WebSocket handshake carries the JWT as a query parameter;
