@@ -8,6 +8,11 @@ name: CI
 # reviewed.
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
   pull_request:
     branches: [main]
     paths:
