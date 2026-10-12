@@ -64,7 +64,14 @@ It needs a running stack plus one-time browser install:
 npm ci
 npx playwright install chromium     # one-time; on Linux use --with-deps
 make dev-up                          # or: backend cargo run + npm run dev
-make screenshots                     # PNGs land in frontend/screenshots/
+make screenshots                     # PNGs land in frontend/screenshots/ (gitignored)
+```
+
+The screenshots shown in the repo README live in `docs/screenshots/` and are
+committed — regenerate them in place with:
+
+```bash
+SCREENSHOTS_DIR=docs/screenshots make screenshots
 ```
 
 On Linux the browser usually needs system libraries before it will launch; if
