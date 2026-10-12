@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { messageOf } from "../api/client";
-import { api } from "../api/endpoints";
+import { api, normalizeMessage } from "../api/endpoints";
 import type { Message, PresenceUser, ServerEvent } from "../api/types";
 import { encodeReact, encodeSend, encodeTyping, wsUrl } from "../api/ws";
 import { mergeMessages } from "../chat/messages";
@@ -132,7 +132,7 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
 
     const handle = (event: ServerEvent) => {
       if (event.type === "message") {
-        setMessages((prev) => mergeMessages(prev, event.message));
+        setMessages((prev) => mergeMessages(prev, normalizeMessage(event.message)));
         // Sending ends typing immediately — no need for the TTL to expire it.
         dropTyping(event.message.user_id);
       } else if (event.type === "presence") {
