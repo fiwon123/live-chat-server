@@ -136,6 +136,39 @@ impl Messages {
         }
     }
 
+    /// The newest message in a room with its author, for room-list previews.
+    pub async fn latest_with_author(
+        &self,
+        room_id: Uuid,
+    ) -> Result<Option<MessageWithAuthor>, sqlx::Error> {
+        sqlx::query_as!(
+            MessageWithAuthor,
+            r#"SELECT m.id, m.room_id, m.user_id, u.username, m.body, m.created_at
+               FROM messages m
+               JOIN users u ON u.id = m.user_id
+               WHERE m.room_id = $1
+               ORDER BY m.created_at DESC, m.id DESC
+               LIMIT 1"#,
+            room_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    /// The newest message of every room, one row per room (for `GET /api/rooms`).
+    pub async fn latest_with_author_by_room(&self) -> Result<Vec<MessageWithAuthor>, sqlx::Error> {
+        sqlx::query_as!(
+            MessageWithAuthor,
+            r#"SELECT DISTINCT ON (m.room_id)
+                      m.id, m.room_id, m.user_id, u.username, m.body, m.created_at
+               FROM messages m
+               JOIN users u ON u.id = m.user_id
+               ORDER BY m.room_id, m.created_at DESC, m.id DESC"#
+        )
+        .fetch_all(&self.pool)
+        .await
+    }
+
     /// Find a single message by id (used for cursor validation).
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<Message>, sqlx::Error> {
         sqlx::query_as!(

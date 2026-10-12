@@ -8,6 +8,7 @@ import type { Message, PresenceUser, ServerEvent } from "../api/types";
 import { encodeReact, encodeSend, encodeTyping, wsUrl } from "../api/ws";
 import { mergeMessages } from "../chat/messages";
 import { applyReaction } from "../chat/reactions";
+import { applyRead, type ReadMap } from "../chat/reads";
 
 export const HISTORY_PAGE_SIZE = 50;
 const BASE_RECONNECT_DELAY_MS = 500;
@@ -23,6 +24,8 @@ export interface ChatRoom {
   messages: Message[];
   online: PresenceUser[];
   typing: PresenceUser[];
+  /** Read cursors per reader, updated by ephemeral `read` receipts. */
+  reads: ReadMap;
   status: ConnectionStatus;
   error: string | null;
   hasMore: boolean;
@@ -41,6 +44,7 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
   const [messages, setMessages] = useState<Message[]>([]);
   const [online, setOnline] = useState<Record<string, PresenceUser>>({});
   const [typing, setTyping] = useState<Record<string, PresenceUser>>({});
+  const [reads, setReads] = useState<ReadMap>({});
   const [status, setStatus] = useState<ConnectionStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -72,6 +76,7 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
   useEffect(() => {
     setMessages([]);
     setOnline({});
+    setReads({});
     clearTyping();
     setError(null);
     setHasMore(false);
@@ -169,6 +174,8 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
         setMessages((prev) =>
           applyReaction(prev, event.message_id, event.emoji, event.user_id, event.added),
         );
+      } else if (event.type === "read") {
+        setReads((prev) => applyRead(prev, event.message_id, event.user));
       } else {
         setError(event.message);
       }
@@ -290,6 +297,7 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
     messages,
     online: onlineList,
     typing: typingList,
+    reads,
     status,
     error,
     hasMore,

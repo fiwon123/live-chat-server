@@ -235,6 +235,14 @@
   opacity: 1;
 }
 
+/* Read receipts: who has seen the viewer's newest message. */
+.message__seen {
+  align-self: flex-end;
+  font-size: var(--text-xs);
+  color: var(--accent);
+  opacity: 0.85;
+}
+
 /* Reactions */
 
 .reactions {

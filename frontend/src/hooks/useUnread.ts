@@ -7,6 +7,7 @@ import {
   loadUnread,
   markRoomRead,
   saveUnread,
+  syncFromRooms,
   totalUnread,
   type UnreadMap,
 } from "../chat/unread";
@@ -31,6 +32,11 @@ export function useUnread() {
     setUnread((map) => markRoomRead(map, roomId));
   }, []);
 
+  /** Adopt the server's per-room counts (called after each room list fetch). */
+  const sync = useCallback((rooms: Array<{ id: string; unread_count: number }>) => {
+    setUnread((map) => syncFromRooms(map, rooms));
+  }, []);
+
   const clearAll = useCallback(() => {
     setUnread({});
   }, []);
@@ -40,6 +46,7 @@ export function useUnread() {
     total: totalUnread(unread),
     bump,
     markRead,
+    sync,
     clearAll,
   };
 }

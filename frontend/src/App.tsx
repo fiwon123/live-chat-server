@@ -30,7 +30,7 @@ function App() {
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const { unread, total, bump, markRead, clearAll } = useUnread();
+  const { unread, total, bump, markRead, sync, clearAll } = useUnread();
   const { theme, toggle: toggleTheme } = useTheme();
   const { toasts, push, dismiss } = useToasts();
 
@@ -38,6 +38,12 @@ function App() {
   const chat = useChatRoom(token, activeRoom?.id ?? "");
   const roomSearchRef = useRef<HTMLInputElement>(null);
   const baselineRef = useRef<string | null>(null);
+  const readTimerRef = useRef<number | null>(null);
+  const readAtRef = useRef(0);
+  const lastVisibleMessageRef = useRef<string | null>(null);
+
+  /** Smallest gap between message-level read calls (mark-all is never gated). */
+  const READ_THROTTLE_MS = 800;
 
   // Reflect unread messages in the tab title.
   useEffect(() => {
@@ -65,6 +71,47 @@ function App() {
     }
   }, [chat.status, activeRoom?.id]);
 
+  // Clear the unread badge locally and persist the read cursor remotely.
+  const markRoomReadRemote = useCallback(
+    (roomId: string, messageId?: string) => {
+      markRead(roomId);
+      if (token.length === 0) {
+        return;
+      }
+      if (messageId === undefined) {
+        // Mark-everything is explicit (entering a room / tab focus): send now.
+        if (readTimerRef.current !== null) {
+          window.clearTimeout(readTimerRef.current);
+          readTimerRef.current = null;
+        }
+        lastVisibleMessageRef.current = null;
+        readAtRef.current = Date.now();
+        void api.read(token, roomId, null).catch(() => {
+          // Read state is best-effort; a failure only leaves the badge showing.
+        });
+        return;
+      }
+      // Message-level reads are throttled, with a trailing send so the cursor
+      // always ends up at the newest visible message.
+      lastVisibleMessageRef.current = messageId;
+      const now = Date.now();
+      const delay = readAtRef.current + READ_THROTTLE_MS - now;
+      const flush = () => {
+        readTimerRef.current = null;
+        readAtRef.current = Date.now();
+        const cursor = lastVisibleMessageRef.current;
+        lastVisibleMessageRef.current = null;
+        void api.read(token, roomId, cursor).catch(() => {});
+      };
+      if (delay <= 0) {
+        flush();
+      } else if (readTimerRef.current === null) {
+        readTimerRef.current = window.setTimeout(flush, delay);
+      }
+    },
+    [token, markRead],
+  );
+
   // Chime + notify on genuinely new incoming messages.
   useEffect(() => {
     const last = chat.messages[chat.messages.length - 1];
@@ -82,29 +129,56 @@ function App() {
     if (last.user_id === auth.user?.id) {
       return;
     }
-    playChime();
-    if (document.visibilityState !== "visible") {
-      bump(activeRoom.id);
-      notifyNewMessage(`#${activeRoom.name}`, `${last.username}: ${last.body}`);
+    if (document.visibilityState === "visible") {
+      // Reading the room keeps the cursor at the newest visible message.
+      markRoomReadRemote(activeRoom.id, last.id);
+      return;
     }
-  }, [chat.messages, chat.status, activeRoom, auth.user?.id, bump]);
+    playChime();
+    bump(activeRoom.id);
+    notifyNewMessage(`#${activeRoom.name}`, `${last.username}: ${last.body}`);
+  }, [chat.messages, chat.status, activeRoom, auth.user?.id, bump, markRoomReadRemote]);
 
   // Entering a room / returning to the tab clears its unread count.
   useEffect(() => {
     if (activeRoom !== null) {
-      markRead(activeRoom.id);
+      markRoomReadRemote(activeRoom.id);
     }
-  }, [activeRoom, markRead]);
+  }, [activeRoom, markRoomReadRemote]);
+
+  // Leaving a room drops any pending trailing read cursor for it; the
+  // mark-all above only runs while a room is open.
+  useEffect(() => {
+    if (activeRoom !== null) {
+      return;
+    }
+    if (readTimerRef.current !== null) {
+      window.clearTimeout(readTimerRef.current);
+      readTimerRef.current = null;
+    }
+    readAtRef.current = 0;
+    lastVisibleMessageRef.current = null;
+  }, [activeRoom]);
 
   useEffect(() => {
     const onVisibility = () => {
       if (document.visibilityState === "visible" && activeRoom !== null) {
-        markRead(activeRoom.id);
+        markRoomReadRemote(activeRoom.id);
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [activeRoom, markRead]);
+  }, [activeRoom, markRoomReadRemote]);
+
+  // Drop the trailing read timer on unmount.
+  useEffect(
+    () => () => {
+      if (readTimerRef.current !== null) {
+        window.clearTimeout(readTimerRef.current);
+      }
+    },
+    [],
+  );
 
   const refreshRooms = useCallback(async () => {
     if (token.length === 0) {
@@ -113,13 +187,15 @@ function App() {
     setRoomsLoading(true);
     setRoomsError(null);
     try {
-      setRooms(await api.listRooms(token));
+      const rooms = await api.listRooms(token);
+      setRooms(rooms);
+      sync(rooms);
     } catch (error) {
       setRoomsError(messageOf(error));
     } finally {
       setRoomsLoading(false);
     }
-  }, [token]);
+  }, [token, sync]);
 
   // Load rooms once authenticated; clear everything on logout.
   useEffect(() => {
@@ -267,6 +343,7 @@ function App() {
             messages={chat.messages}
             online={chat.online}
             typing={chat.typing}
+            reads={chat.reads}
             status={chat.status}
             error={chat.error}
             hasMore={chat.hasMore}

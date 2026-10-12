@@ -59,6 +59,8 @@ pub enum WsOutgoing {
         username: String,
         added: bool,
     },
+    /// A member marked messages read up to `message_id` (ephemeral receipt).
+    Read { message_id: Uuid, user: UserRef },
     /// A protocol or validation error; the connection stays open.
     Error { message: String },
 }

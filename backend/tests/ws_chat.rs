@@ -671,3 +671,62 @@ async fn duplicate_connections_reference_count_presence() {
     assert_eq!(left["event"], "left");
     assert_eq!(left["user"]["username"], y_name);
 }
+
+#[tokio::test]
+async fn read_receipts_broadcast_within_room_only() {
+    let Some(server) = spawn_server().await else {
+        return;
+    };
+
+    let (alice_token, _) = register_user(&server.app).await;
+    let (bob_token, bob_name) = register_user(&server.app).await;
+    let (carol_token, _) = register_user(&server.app).await;
+
+    let (room_a, _) = create_room(&server.app, &alice_token, "read-a").await;
+    let (room_b, _) = create_room(&server.app, &carol_token, "read-b").await;
+
+    let (status, _) = request(
+        &server.app,
+        "POST",
+        &format!("/api/rooms/{room_a}/join"),
+        None,
+        Some(&bob_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // Drain each client's own `joined` so the streams are clear.
+    let mut alice = connect_ws(&server, &alice_token, &room_a).await;
+    let _ = next_event_of_type(&mut alice, "presence").await;
+    let mut bob = connect_ws(&server, &bob_token, &room_a).await;
+    let bob_joined = next_event_of_type(&mut bob, "presence").await;
+    let bob_id = bob_joined["user"]["id"].as_str().unwrap().to_string();
+    let _ = next_event_of_type(&mut alice, "presence").await;
+    let mut carol = connect_ws(&server, &carol_token, &room_b).await;
+    let _ = next_event_of_type(&mut carol, "presence").await;
+
+    // Alice sends a message; capture its id.
+    send_text(&mut alice, r#"{"type":"send","body":"read me"}"#).await;
+    let alice_msg = next_event_of_type(&mut alice, "message").await;
+    let _ = next_event_of_type(&mut bob, "message").await;
+    let message_id = alice_msg["message"]["id"].as_str().unwrap().to_string();
+
+    // Bob marks the room read over HTTP; Alice sees the receipt.
+    let (status, _) = request(
+        &server.app,
+        "POST",
+        &format!("/api/rooms/{room_a}/read"),
+        Some(json!({ "message_id": message_id })),
+        Some(&bob_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let read = next_event_of_type(&mut alice, "read").await;
+    assert_eq!(read["message_id"], message_id);
+    assert_eq!(read["user"]["id"], bob_id);
+    assert_eq!(read["user"]["username"], bob_name);
+
+    // Carol (different room) must not see the receipt.
+    assert_no_event(&mut carol, Duration::from_millis(300)).await;
+}

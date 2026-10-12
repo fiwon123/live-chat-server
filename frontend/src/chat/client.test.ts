@@ -5,6 +5,7 @@ import {
   loadUnread,
   markRoomRead,
   saveUnread,
+  syncFromRooms,
   totalUnread,
   type UnreadMap,
 } from "./unread";
@@ -58,6 +59,43 @@ describe("unread map", () => {
       setItem: () => {},
     };
     expect(loadUnread(storage)).toEqual({ c: 3 });
+  });
+});
+
+describe("syncFromRooms", () => {
+  it("adopts positive server counts over stale local ones", () => {
+    const map = syncFromRooms({ a: 1, b: 9 }, [
+      { id: "a", unread_count: 5 },
+      { id: "b", unread_count: 0 },
+    ]);
+    expect(map).toEqual({ a: 5 });
+  });
+
+  it("clears a stale local bump when the server reports the room read", () => {
+    const map = syncFromRooms({ b: 9 }, [
+      { id: "a", unread_count: 0 },
+      { id: "b", unread_count: 0 },
+    ]);
+    expect(map.b).toBeUndefined();
+  });
+
+  it("clears a room when both sides agree it is read", () => {
+    const map = syncFromRooms({ a: 0 }, [{ id: "a", unread_count: 0 }]);
+    expect(map.a).toBeUndefined();
+  });
+
+  it("ignores negative and fractional counts", () => {
+    const map = syncFromRooms({}, [
+      { id: "a", unread_count: -1 },
+      { id: "b", unread_count: 2.7 },
+    ]);
+    expect(map).toEqual({ b: 2 });
+  });
+
+  it("does not mutate the input map", () => {
+    const before: UnreadMap = { a: 1 };
+    syncFromRooms(before, [{ id: "a", unread_count: 3 }]);
+    expect(before).toEqual({ a: 1 });
   });
 });
 
