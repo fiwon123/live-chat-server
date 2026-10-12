@@ -372,10 +372,13 @@ fn parse_incoming(text: &str) -> Result<Incoming, serde_json::Error> {
 }
 
 /// Validate a message body: trimmed, non-empty, at most [`MAX_MESSAGE_LEN`],
-/// no control characters (mirrors room-name validation: embedded NULs must
-/// not reach Postgres).
+/// no control characters except newlines — multiline messages are a designed
+/// feature (the composer advertises Shift+Enter for a new line and bubbles
+/// render with `white-space: pre-wrap`). CRLF and lone `\r` are normalized to
+/// `\n`; every other control character (NUL, ESC, tab, ...) is rejected, so
+/// embedded NULs must not reach Postgres.
 fn validate_body(body: &str) -> Result<String, AppError> {
-    let body = body.trim().to_string();
+    let body = body.trim().replace("\r\n", "\n").replace('\r', "\n");
     if body.is_empty() {
         return Err(AppError::BadRequest(
             "message must not be empty".to_string(),
@@ -386,7 +389,7 @@ fn validate_body(body: &str) -> Result<String, AppError> {
             "message must be at most {MAX_MESSAGE_LEN} characters"
         )));
     }
-    if body.chars().any(char::is_control) {
+    if body.chars().any(|c| c.is_control() && c != '\n') {
         return Err(AppError::BadRequest(
             "message must not contain control characters".to_string(),
         ));
@@ -450,6 +453,20 @@ mod tests {
     fn rejects_control_characters() {
         assert!(validate_body("hello\u{0}world").is_err());
         assert!(validate_body("tab\there").is_err());
+        assert!(validate_body("esc\u{1b}ape").is_err());
+    }
+
+    #[test]
+    fn accepts_multiline_bodies() {
+        let body = validate_body("line one\nline two").unwrap();
+        assert_eq!(body, "line one\nline two");
+    }
+
+    #[test]
+    fn normalizes_crlf_and_cr_to_lf() {
+        assert_eq!(validate_body("a\r\nb").unwrap(), "a\nb");
+        assert_eq!(validate_body("a\rb").unwrap(), "a\nb");
+        assert_eq!(validate_body("a\r\nb\r\nc").unwrap(), "a\nb\nc");
     }
 
     #[test]

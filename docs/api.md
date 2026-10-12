@@ -265,7 +265,10 @@ Validation for `send` (per message, on every send):
 
 - `body` is trimmed, must be non-empty.
 - At most **4000 characters**.
-- No control characters (matches room-name rules; NUL must not reach Postgres).
+- Newlines are allowed and preserved (multiline messages). `\r\n` and lone `\r`
+  are normalized to `\n`.
+- No other control characters (matches room-name rules; NUL must not reach
+  Postgres). A tab is rejected.
 
 `typing` carries no payload — the server knows the sender. It is throttled to at
 most one relayed event per session every **1.5 s**; anything faster is dropped
