@@ -2,8 +2,8 @@
 
 An intermediate Rust project demonstrating asynchronous networking, WebSockets,
 concurrent connections, authentication, and message persistence (Axum + Tokio +
-SQLx + PostgreSQL). Single-server with in-memory room state; Redis Pub/Sub is
-deferred to a multi-instance extension.
+SQLx + PostgreSQL). Single-server with in-memory room state; Redis Pub/Sub
+enables multi-instance broadcasting when `REDIS_URL` is set.
 
 ## Status
 

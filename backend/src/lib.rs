@@ -26,17 +26,29 @@ use crate::ws::RoomRegistry;
 pub struct AppState {
     pub pool: PgPool,
     pub config: Arc<Config>,
-    /// In-memory per-room WebSocket registry (single server instance);
-    /// cheap to clone (its internals are already `Arc`-shared).
+    /// Per-room WebSocket registry; cheap to clone (its internals are already
+    /// `Arc`-shared). In-memory by default, Redis Pub/Sub behind `with_redis`.
     pub registry: RoomRegistry,
 }
 
 impl AppState {
+    /// In-memory broadcast registry (single server instance).
     pub fn new(pool: PgPool, config: Config) -> Self {
         Self {
             pool,
             config: Arc::new(config),
             registry: RoomRegistry::new(),
+        }
+    }
+
+    /// Broadcast room events through Redis Pub/Sub (multi-instance). The
+    /// caller is expected to have already verified the connection; `connect`
+    /// failures fall back to [`AppState::new`] with a logged warning.
+    pub fn with_redis(pool: PgPool, config: Config, redis: crate::ws::RedisPubSub) -> Self {
+        Self {
+            pool,
+            config: Arc::new(config),
+            registry: RoomRegistry::with_redis(redis),
         }
     }
 }

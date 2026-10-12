@@ -72,7 +72,7 @@ pub struct CreateRoomRequest {
 }
 
 /// Public representation of a message with its author's username.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageResponse {
     pub id: Uuid,
     pub room_id: Uuid,
@@ -85,7 +85,7 @@ pub struct MessageResponse {
 }
 
 /// Public representation of one emoji's reactions on a message.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReactionResponse {
     pub emoji: String,
     pub count: i64,

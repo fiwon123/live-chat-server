@@ -13,6 +13,7 @@ axum = { version = "0.8", features = ["ws"] }
 chrono = { version = "0.4", features = ["serde"] }
 futures-util = { version = "0.3", features = ["sink"] }
 jsonwebtoken = { version = "11", features = ["rust_crypto"] }
+redis = { version = "1.7.1", features = ["tokio-comp", "connection-manager"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sqlx = { version = "0.9.0", features = ["runtime-tokio", "postgres", "macros", "migrate", "uuid", "chrono"] }
