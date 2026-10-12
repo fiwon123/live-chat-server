@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 
 import { credentialRules, credentialsValid } from "../auth/validation";
 import { Icon } from "./Icon";
@@ -15,9 +15,21 @@ export function LoginForm({ onSubmit, busy, error }: LoginFormProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const loginTabRef = useRef<HTMLButtonElement>(null);
+  const registerTabRef = useRef<HTMLButtonElement>(null);
+
+  const switchMode = (next: "login" | "register") => {
+    if (next === mode) {
+      return;
+    }
+    setMode(next);
+    const nextTab = next === "login" ? loginTabRef : registerTabRef;
+    window.requestAnimationFrame(() => nextTab.current?.focus());
+  };
 
   const rules = credentialRules(username, password);
-  const canSubmit = !busy && (mode === "login" || credentialsValid(username, password));
+  const loginReady = username.length > 0 && password.length > 0;
+  const canSubmit = !busy && (mode === "login" ? loginReady : credentialsValid(username, password));
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -39,23 +51,37 @@ export function LoginForm({ onSubmit, busy, error }: LoginFormProps) {
         </p>
       </header>
 
-      <div className="tabs" role="tablist" aria-label="Authentication mode">
+      <div
+        className="tabs"
+        role="tablist"
+        aria-label="Authentication mode"
+        onKeyDown={(event) => {
+          if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            event.preventDefault();
+            switchMode(mode === "login" ? "register" : "login");
+          }
+        }}
+      >
         <span className="tabs__ind" data-mode={mode} aria-hidden="true" />
         <button
           type="button"
           role="tab"
+          ref={loginTabRef}
           aria-selected={mode === "login"}
+          tabIndex={mode === "login" ? 0 : -1}
           className={mode === "login" ? "active" : ""}
-          onClick={() => setMode("login")}
+          onClick={() => switchMode("login")}
         >
           Log in
         </button>
         <button
           type="button"
           role="tab"
+          ref={registerTabRef}
           aria-selected={mode === "register"}
+          tabIndex={mode === "register" ? 0 : -1}
           className={mode === "register" ? "active" : ""}
-          onClick={() => setMode("register")}
+          onClick={() => switchMode("register")}
         >
           Register
         </button>

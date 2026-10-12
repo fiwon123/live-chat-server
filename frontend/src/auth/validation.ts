@@ -29,8 +29,8 @@ export function credentialRules(username: string, password: string): CredentialR
     },
     {
       id: "password",
-      label: `At least ${PASSWORD_MIN} characters`,
-      met: password.length >= PASSWORD_MIN,
+      label: `${PASSWORD_MIN}–${PASSWORD_MAX} characters`,
+      met: isValidPassword(password),
     },
   ];
 }

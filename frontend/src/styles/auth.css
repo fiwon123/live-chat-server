@@ -42,10 +42,11 @@
   font-size: clamp(2rem, 3.6vw, 3rem);
   line-height: 1.05;
   letter-spacing: -0.02em;
+  color: var(--text);
   background: linear-gradient(120deg, var(--text), var(--accent-bright));
   -webkit-background-clip: text;
   background-clip: text;
-  color: transparent;
+  -webkit-text-fill-color: transparent;
 }
 
 .auth__blurb {
