@@ -1,0 +1,122 @@
+/* ----- App shell ----- */
+
+.app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.55rem 1rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar .who {
+  margin-left: auto;
+  font-weight: 600;
+}
+
+.topbar button {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+
+.topbar button:hover {
+  color: var(--text);
+}
+
+.body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* ----- Rooms ----- */
+
+.rooms {
+  width: 260px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.8rem;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+}
+
+.rooms h2 {
+  margin: 0;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.rooms form {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.rooms form input {
+  flex: 1;
+  min-width: 0;
+}
+
+.rooms form button {
+  background: var(--accent-gradient);
+  color: var(--accent-contrast);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0 0.7rem;
+  cursor: pointer;
+}
+
+.rooms ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.rooms li button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.6rem;
+  cursor: pointer;
+}
+
+.rooms li button:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.rooms li button.active {
+  background: var(--accent-soft);
+  border-color: var(--border);
+}
+
+.rooms .tag {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 0.05rem 0.4rem;
+}
