@@ -1,11 +1,16 @@
 //! Room lifecycle: create, list, get, join, leave, and history access.
 
+use std::collections::HashMap;
+
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::models::Room;
-use crate::storage::{MessageWithAuthor, Messages, RoomMemberships, RoomWithMembership, Rooms};
+use crate::storage::{
+    MessageWithAuthor, Messages, ReactionGroup, Reactions, RoomMemberships, RoomWithMembership,
+    Rooms, group_by_message,
+};
 
 /// Maximum length of a room name (after trimming).
 pub const MAX_ROOM_NAME_LEN: usize = 64;
@@ -38,6 +43,7 @@ pub struct RoomService {
     rooms: Rooms,
     memberships: RoomMemberships,
     messages: Messages,
+    reactions: Reactions,
 }
 
 impl RoomService {
@@ -45,7 +51,8 @@ impl RoomService {
         Self {
             rooms: Rooms::new(pool.clone()),
             memberships: RoomMemberships::new(pool.clone()),
-            messages: Messages::new(pool),
+            messages: Messages::new(pool.clone()),
+            reactions: Reactions::new(pool),
         }
     }
 
@@ -114,6 +121,17 @@ impl RoomService {
             .messages
             .list_with_author(room_id, before, limit)
             .await?)
+    }
+
+    /// Aggregated reactions for a page of messages, keyed by message id.
+    /// Messages without reactions are absent from the map.
+    pub async fn reactions_for_messages(
+        &self,
+        message_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, Vec<ReactionGroup>>, AppError> {
+        Ok(group_by_message(
+            self.reactions.list_for_messages(message_ids).await?,
+        ))
     }
 
     async fn ensure_room_exists(&self, room_id: Uuid) -> Result<(), AppError> {

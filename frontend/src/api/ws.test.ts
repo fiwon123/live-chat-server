@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { encodeSend, encodeTyping, resolveWsUrl } from "./ws";
+import { encodeReact, encodeSend, encodeTyping, resolveWsUrl } from "./ws";
 
 describe("resolveWsUrl", () => {
   it("builds a ws URL with token and room_id query params", () => {
@@ -29,5 +29,13 @@ describe("frame encoding", () => {
 
   it("encodes a typing frame with no payload", () => {
     expect(JSON.parse(encodeTyping())).toEqual({ type: "typing" });
+  });
+
+  it("encodes a react frame with the target message and emoji", () => {
+    expect(JSON.parse(encodeReact("m1", "👍"))).toEqual({
+      type: "react",
+      message_id: "m1",
+      emoji: "👍",
+    });
   });
 });

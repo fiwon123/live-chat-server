@@ -338,6 +338,187 @@ async fn typing_broadcasts_within_room_only_and_is_not_persisted() {
 }
 
 #[tokio::test]
+async fn reactions_toggle_persist_and_broadcast_within_room_only() {
+    let Some(server) = spawn_server().await else {
+        return;
+    };
+
+    let (alice_token, alice_name) = register_user(&server.app).await;
+    let (bob_token, _) = register_user(&server.app).await;
+    let (carol_token, _) = register_user(&server.app).await;
+
+    let (room_a, alice_id) = create_room(&server.app, &alice_token, "react-a").await;
+    let (room_b, _) = create_room(&server.app, &carol_token, "react-b").await;
+
+    let (status, _) = request(
+        &server.app,
+        "POST",
+        &format!("/api/rooms/{room_a}/join"),
+        None,
+        Some(&bob_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // Drain each client's own `joined` so the streams are clear.
+    let mut alice = connect_ws(&server, &alice_token, &room_a).await;
+    let _ = next_event_of_type(&mut alice, "presence").await;
+    let mut bob = connect_ws(&server, &bob_token, &room_a).await;
+    let bob_joined = next_event_of_type(&mut bob, "presence").await;
+    let bob_id = bob_joined["user"]["id"].as_str().unwrap().to_string();
+    let _ = next_event_of_type(&mut alice, "presence").await;
+    let mut carol = connect_ws(&server, &carol_token, &room_b).await;
+    let _ = next_event_of_type(&mut carol, "presence").await;
+
+    // Alice sends a message; capture its id from both room-A clients.
+    send_text(&mut alice, r#"{"type":"send","body":"reactable"}"#).await;
+    let alice_msg = next_event_of_type(&mut alice, "message").await;
+    let bob_msg = next_event_of_type(&mut bob, "message").await;
+    let message_id = alice_msg["message"]["id"].as_str().unwrap().to_string();
+    assert_eq!(bob_msg["message"]["id"], message_id);
+    // A freshly persisted message carries no reactions.
+    assert!(
+        alice_msg["message"]["reactions"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
+    // Alice reacts 👍: both room-A clients (including the sender) see it.
+    send_text(
+        &mut alice,
+        &json!({ "type": "react", "message_id": message_id, "emoji": "👍" }).to_string(),
+    )
+    .await;
+    for stream in [&mut alice, &mut bob] {
+        let event = next_event_of_type(stream, "reaction").await;
+        assert_eq!(event["message_id"], message_id);
+        assert_eq!(event["emoji"], "👍");
+        assert_eq!(event["user_id"], alice_id);
+        assert_eq!(event["username"], alice_name);
+        assert_eq!(event["added"], true);
+    }
+
+    // Carol (different room) must not see the reaction.
+    assert_no_event(&mut carol, Duration::from_millis(300)).await;
+
+    // History reflects the persisted reaction.
+    let (status, history) = request(
+        &server.app,
+        "GET",
+        &format!("/api/rooms/{room_a}/messages"),
+        None,
+        Some(&alice_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let history = history.as_array().unwrap();
+    let reactions = history[0]["reactions"].as_array().unwrap();
+    assert_eq!(reactions.len(), 1);
+    assert_eq!(reactions[0]["emoji"], "👍");
+    assert_eq!(reactions[0]["count"], 1);
+    assert_eq!(reactions[0]["user_ids"][0], alice_id);
+
+    // Bob adds the same emoji: still one group, but count 2.
+    send_text(
+        &mut bob,
+        &json!({ "type": "react", "message_id": message_id, "emoji": "👍" }).to_string(),
+    )
+    .await;
+    for stream in [&mut alice, &mut bob] {
+        let event = next_event_of_type(stream, "reaction").await;
+        assert_eq!(event["user_id"], bob_id);
+        assert_eq!(event["added"], true);
+    }
+    let (_, history) = request(
+        &server.app,
+        "GET",
+        &format!("/api/rooms/{room_a}/messages"),
+        None,
+        Some(&alice_token),
+    )
+    .await;
+    let reactions = history[0]["reactions"].as_array().unwrap();
+    assert_eq!(
+        reactions.len(),
+        1,
+        "same emoji must not create a second group"
+    );
+    assert_eq!(reactions[0]["count"], 2);
+
+    // Alice reacts 👍 again: toggles her reaction off (added: false).
+    send_text(
+        &mut alice,
+        &json!({ "type": "react", "message_id": message_id, "emoji": "👍" }).to_string(),
+    )
+    .await;
+    for stream in [&mut alice, &mut bob] {
+        let event = next_event_of_type(stream, "reaction").await;
+        assert_eq!(event["user_id"], alice_id);
+        assert_eq!(event["added"], false);
+    }
+    let (_, history) = request(
+        &server.app,
+        "GET",
+        &format!("/api/rooms/{room_a}/messages"),
+        None,
+        Some(&alice_token),
+    )
+    .await;
+    let reactions = history[0]["reactions"].as_array().unwrap();
+    assert_eq!(reactions.len(), 1);
+    assert_eq!(reactions[0]["count"], 1);
+
+    // Reacting to a message in another room is rejected without delivery.
+    send_text(&mut carol, r#"{"type":"send","body":"in room b"}"#).await;
+    let carol_msg = next_event_of_type(&mut carol, "message").await;
+    let other_message_id = carol_msg["message"]["id"].as_str().unwrap().to_string();
+    send_text(
+        &mut alice,
+        &json!({ "type": "react", "message_id": other_message_id, "emoji": "👍" }).to_string(),
+    )
+    .await;
+    let error = next_event_of_type(&mut alice, "error").await;
+    assert!(
+        error["message"].as_str().unwrap().contains("not found"),
+        "error message: {}",
+        error["message"]
+    );
+    assert_no_event(&mut bob, Duration::from_millis(300)).await;
+
+    // An empty emoji is rejected too.
+    send_text(
+        &mut alice,
+        &json!({ "type": "react", "message_id": message_id, "emoji": "   " }).to_string(),
+    )
+    .await;
+    let error = next_event_of_type(&mut alice, "error").await;
+    assert!(error["message"].as_str().unwrap().contains("empty"));
+
+    // The connection survived all failures: a valid message still flows.
+    send_text(&mut alice, r#"{"type":"send","body":"still here"}"#).await;
+    let event = next_event_of_type(&mut bob, "message").await;
+    assert_eq!(event["message"]["body"], "still here");
+
+    // Only the two valid messages were persisted; the second has no reactions.
+    let (_, history) = request(
+        &server.app,
+        "GET",
+        &format!("/api/rooms/{room_a}/messages"),
+        None,
+        Some(&alice_token),
+    )
+    .await;
+    let history = history.as_array().unwrap();
+    assert_eq!(history.len(), 2);
+    // History is newest-first.
+    assert_eq!(history[0]["body"], "still here");
+    assert!(history[0]["reactions"].as_array().unwrap().is_empty());
+    assert_eq!(history[1]["body"], "reactable");
+    assert_eq!(history[1]["reactions"][0]["count"], 1);
+}
+
+#[tokio::test]
 async fn invalid_sends_get_error_events_but_connection_survives() {
     let Some(server) = spawn_server().await else {
         return;

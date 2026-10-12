@@ -5,8 +5,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { messageOf } from "../api/client";
 import { api } from "../api/endpoints";
 import type { Message, PresenceUser, ServerEvent } from "../api/types";
-import { encodeSend, encodeTyping, wsUrl } from "../api/ws";
+import { encodeReact, encodeSend, encodeTyping, wsUrl } from "../api/ws";
 import { mergeMessages } from "../chat/messages";
+import { applyReaction } from "../chat/reactions";
 
 export const HISTORY_PAGE_SIZE = 50;
 const BASE_RECONNECT_DELAY_MS = 500;
@@ -28,6 +29,7 @@ export interface ChatRoom {
   loadingOlder: boolean;
   send: (body: string) => boolean;
   sendTyping: () => void;
+  react: (messageId: string, emoji: string) => void;
   loadOlder: () => void;
 }
 
@@ -163,6 +165,10 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
             });
           }, TYPING_TTL_MS),
         );
+      } else if (event.type === "reaction") {
+        setMessages((prev) =>
+          applyReaction(prev, event.message_id, event.emoji, event.user_id, event.added),
+        );
       } else {
         setError(event.message);
       }
@@ -244,6 +250,16 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
     socket.send(encodeTyping());
   }, []);
 
+  /** Toggle a reaction on a message; the server echoes the result back. */
+  const react = useCallback((messageId: string, emoji: string) => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      setError("Not connected — try again in a moment.");
+      return;
+    }
+    socket.send(encodeReact(messageId, emoji));
+  }, []);
+
   const loadOlder = useCallback(() => {
     const before = oldestRef.current;
     if (!active || !before || loadingOlder) {
@@ -280,6 +296,7 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
     loadingOlder,
     send,
     sendTyping,
+    react,
     loadOlder,
   };
 }

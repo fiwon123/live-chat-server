@@ -273,6 +273,7 @@ function App() {
             loadingOlder={chat.loadingOlder}
             onSend={chat.send}
             onTyping={chat.sendTyping}
+            onReact={chat.react}
             onLoadOlder={chat.loadOlder}
             onLeave={() => void leaveRoom()}
           />
