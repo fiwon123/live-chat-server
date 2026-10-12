@@ -1,4 +1,12 @@
-import { Fragment, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 
 import type { Message, PresenceUser, Room } from "../api/types";
 import {
@@ -10,6 +18,7 @@ import {
 } from "../chat/messages";
 import { linkified } from "../chat/linkify";
 import { QUICK_REACTIONS, hasReacted } from "../chat/reactions";
+import { seenBy, type ReadMap } from "../chat/reads";
 import type { ConnectionStatus } from "../hooks/useChatRoom";
 import { Avatar } from "./Avatar";
 import { EmojiPicker } from "./EmojiPicker";
@@ -21,6 +30,8 @@ export interface ChatPanelProps {
   messages: Message[];
   online: PresenceUser[];
   typing: PresenceUser[];
+  /** Read cursors per reader, surfaced as "Seen" on the viewer's last message. */
+  reads: ReadMap;
   status: ConnectionStatus;
   error: string | null;
   hasMore: boolean;
@@ -46,6 +57,7 @@ export function ChatPanel({
   messages,
   online,
   typing,
+  reads,
   status,
   error,
   hasMore,
@@ -190,6 +202,23 @@ export function ChatPanel({
   const onlineTitle = online.map((user) => user.username).join(", ");
   const typingText = typingLabel(typing.filter((user) => user.id !== currentUserId));
 
+  // "Seen" markers: the viewers whose read cursor reached the viewer's newest
+  // message (their own cursor is not a receipt to themselves).
+  const lastOwnMessageId = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index].user_id === currentUserId) {
+        return messages[index].id;
+      }
+    }
+    return null;
+  }, [messages, currentUserId]);
+
+  const seen = useMemo(
+    () =>
+      lastOwnMessageId === null ? [] : seenBy(messages, reads, lastOwnMessageId, currentUserId),
+    [messages, reads, lastOwnMessageId, currentUserId],
+  );
+
   return (
     <section className="chat">
       <header>
@@ -301,6 +330,14 @@ export function ChatPanel({
                   <time className="message__time" dateTime={message.created_at}>
                     {formatMessageTime(message.created_at)}
                   </time>
+                  {message.id === lastOwnMessageId && seen.length > 0 && (
+                    <span
+                      className="message__seen"
+                      title={seen.map((user) => user.username).join(", ")}
+                    >
+                      Seen{seen.length === 1 ? ` by ${seen[0].username}` : ` by ${seen.length}`}
+                    </span>
+                  )}
                 </div>
                 <div className="message__actions" role="group" aria-label="Add a reaction">
                   {QUICK_REACTIONS.map((emoji) => {

@@ -96,4 +96,35 @@ describe("api", () => {
     );
     await expect(api.joinRoom("jwt", "room-1")).resolves.toBeUndefined();
   });
+
+  it("marks a room read with an empty body by default", async () => {
+    const fetchMock = mockFetch(
+      new Response(
+        JSON.stringify({ room_id: "room-1", last_read_message_id: null, unread_count: 0 }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    await api.read("jwt", "room-1");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("/api/rooms/room-1/read");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({});
+  });
+
+  it("sends the message_id cursor when marking a specific message read", async () => {
+    const fetchMock = mockFetch(
+      new Response(
+        JSON.stringify({ room_id: "room-1", last_read_message_id: "msg-9", unread_count: 0 }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const result = await api.read("jwt", "room-1", "msg-9");
+
+    expect(result.last_read_message_id).toBe("msg-9");
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toEqual({ message_id: "msg-9" });
+  });
 });

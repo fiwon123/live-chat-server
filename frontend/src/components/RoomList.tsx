@@ -134,7 +134,14 @@ export function RoomList({
                 onClick={() => onEnter(room)}
               >
                 <Icon name="hash" size={16} className="rooms__hash" />
-                <span className="rooms__name">{room.name}</span>
+                <span className="rooms__main">
+                  <span className="rooms__name">{room.name}</span>
+                  {room.last_message !== null && (
+                    <span className="rooms__preview" aria-hidden="true">
+                      {room.last_message.username}: {room.last_message.body}
+                    </span>
+                  )}
+                </span>
                 {count > 0 && (
                   <span className="unread-badge" aria-hidden="true">
                     {count > 99 ? "99+" : count}
