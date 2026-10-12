@@ -68,10 +68,11 @@ make screenshots                     # PNGs land in frontend/screenshots/ (gitig
 ```
 
 The screenshots shown in the repo README live in `docs/screenshots/` and are
-committed — regenerate them in place with:
+committed — regenerate them in place with (path relative to `frontend/`, where
+the harness runs):
 
 ```bash
-SCREENSHOTS_DIR=docs/screenshots make screenshots
+SCREENSHOTS_DIR=../docs/screenshots make screenshots
 ```
 
 On Linux the browser usually needs system libraries before it will launch; if

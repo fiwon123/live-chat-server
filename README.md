@@ -82,8 +82,9 @@ Full HTTP + WebSocket protocol reference: **[`docs/api.md`](docs/api.md)**.
 - Room list with search and unread-count badges; create and join rooms.
 - Live chat: streaming messages, load-older pagination, reactions with an
   emoji picker, typing indicators, presence, and read receipts ("Seen by...").
-- Resilient WebSocket client with reconnect + backoff; history reload on resume.
-- Dark / light themes (persisted), command palette (`Ctrl/Cmd + K`), toasts,
+- Resilient WebSocket client with reconnect + backoff; marks the room read when
+  you return to the tab.
+- Dark / light themes (persisted), room-search shortcut (`Ctrl/Cmd + K`), toasts,
   desktop notifications, keyboard navigation, and screen-reader labels.
 - Typed REST + WebSocket client with response normalization, 92 unit tests.
 
@@ -107,7 +108,7 @@ flowchart LR
     B -->|"WebSocket /api/ws<br/>live message stream"| A
     A -->|"save-before-broadcast"| DB[("PostgreSQL<br/>users · rooms · memberships · messages")]
     A -->|"in-memory room registry<br/>+ broadcast channels"| A
-    A -. "REDIS_URL set →" .-> R[("optional Redis<br/>cross-instance Pub/Sub")]
+    A -.->|"REDIS_URL set →"| R[("optional Redis<br/>cross-instance Pub/Sub")]
 ```
 
 The client only ever talks to the Vite dev server, which proxies `/api`
@@ -127,8 +128,8 @@ make dev-up        # Postgres + API (:8083) + frontend (:5173)
 2. Register a username and password (any unique username works).
 3. Create a room — or ask a friend for a room name and join it.
 4. Chat: messages, emoji reactions, typing indicators, read receipts.
-5. Close the tab and come back: history is persisted in PostgreSQL, and the
-   client reloads it over the WebSocket on reconnect.
+5. Close the tab and come back: history is persisted in PostgreSQL — open the
+   room again and the client fetches it via `GET /api/rooms/{id}/messages`.
 
 Stop everything with `make dev-down`.
 
@@ -138,8 +139,9 @@ No Docker? Run the pieces directly — see [How to develop](#how-to-develop).
 
 ### Prerequisites
 
-- **mise** (or your own toolchain): Rust 1.99+, Node.js 24+, npm
-- **Docker** + Docker Compose for `make dev-up`, or a local PostgreSQL
+- Rust 1.99+ (the mise toolchain pins `rust`), and Node.js 24+ with npm —
+  Node is not pinned by mise; use nvm, corepack, or your package manager
+- Docker + Docker Compose for `make dev-up`, or a local PostgreSQL
 
 ### Quick start
 
@@ -161,11 +163,14 @@ npm ci
 npm run dev         # Vite on :5173, proxies /api to the backend
 ```
 
-If the backend is not on `:8080`, point the proxy at it:
+The Vite proxy forwards `/api` (HTTP + WebSocket) and `/health` to the
+backend. It defaults to `http://localhost:8083`, which is where `make dev-up`
+exposes the API. When running the backend by hand on its default port, point
+the proxy at it:
 
 ```bash
 cd frontend
-VITE_API_PROXY_TARGET=http://localhost:8083 npm run dev
+VITE_API_PROXY_TARGET=http://localhost:8080 npm run dev
 ```
 
 ### Commands
@@ -199,13 +204,14 @@ the six PNGs shown above. It is not part of `make check` and CI never runs it.
 npm ci
 npx playwright install chromium     # one-time; on Linux usually needs --with-deps (requires sudo)
 make dev-up                          # stack must be running
-SCREENSHOTS_DIR=docs/screenshots make screenshots   # committed output
+SCREENSHOTS_DIR=../docs/screenshots make screenshots   # committed output
 ```
 
 The default output directory is `frontend/screenshots/` (gitignored); the
 published images live in `docs/screenshots/` (committed) — hence the
-`SCREENSHOTS_DIR` override above. `VITE_ORIGIN` points the browser elsewhere if
-your stack is not on `:5173`.
+`SCREENSHOTS_DIR=../docs/screenshots` override above, relative to the
+`frontend/` directory the harness runs in. `VITE_ORIGIN` points the browser
+elsewhere if your stack is not on `:5173`.
 
 ## Tech stack
 

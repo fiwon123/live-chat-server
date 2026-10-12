@@ -3,6 +3,7 @@ name = "live-chat-server"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.99"
+publish = false
 description = "Real-time chat API: Axum + Tokio + sqlx + PostgreSQL"
 license-file = "../LICENSE"
 
