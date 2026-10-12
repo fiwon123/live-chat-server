@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { messageOf } from "../api/client";
-import { api, normalizeMessage } from "../api/endpoints";
+import { api } from "../api/endpoints";
 import type { Message, PresenceUser, ServerEvent } from "../api/types";
-import { encodeReact, encodeSend, encodeTyping, wsUrl } from "../api/ws";
+import { decodeServerEvent, encodeReact, encodeSend, encodeTyping, wsUrl } from "../api/ws";
 import { mergeMessages } from "../chat/messages";
 import { applyReaction } from "../chat/reactions";
 import { applyRead, type ReadMap } from "../chat/reads";
@@ -132,7 +132,7 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
 
     const handle = (event: ServerEvent) => {
       if (event.type === "message") {
-        setMessages((prev) => mergeMessages(prev, normalizeMessage(event.message)));
+        setMessages((prev) => mergeMessages(prev, event.message));
         // Sending ends typing immediately — no need for the TTL to expire it.
         dropTyping(event.message.user_id);
       } else if (event.type === "presence") {
@@ -198,7 +198,7 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
           return;
         }
         try {
-          handle(JSON.parse(event.data) as ServerEvent);
+          handle(decodeServerEvent(event.data));
         } catch {
           // Ignore malformed frames rather than dropping the connection.
         }
