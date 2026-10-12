@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent, type RefObject } from "react";
 
 import type { Room } from "../api/types";
 import { Icon } from "./Icon";
@@ -8,6 +8,8 @@ export interface RoomListProps {
   activeRoomId: string | null;
   loading: boolean;
   error: string | null;
+  unread: Record<string, number>;
+  searchRef?: RefObject<HTMLInputElement | null>;
   onEnter: (room: Room) => void;
   onCreate: (name: string) => Promise<void>;
 }
@@ -17,6 +19,8 @@ export function RoomList({
   activeRoomId,
   loading,
   error,
+  unread,
+  searchRef,
   onEnter,
   onCreate,
 }: RoomListProps) {
@@ -76,6 +80,7 @@ export function RoomList({
       <div className="rooms__search">
         <Icon name="search" size={15} className="rooms__search-icon" />
         <input
+          ref={searchRef}
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
           placeholder="Filter rooms…"
@@ -119,19 +124,28 @@ export function RoomList({
       )}
 
       <ul className="rooms__list">
-        {filtered.map((room) => (
-          <li key={room.id}>
-            <button
-              type="button"
-              className={room.id === activeRoomId ? "active" : ""}
-              onClick={() => onEnter(room)}
-            >
-              <Icon name="hash" size={16} className="rooms__hash" />
-              <span className="rooms__name">{room.name}</span>
-              {!room.member && <span className="tag">join</span>}
-            </button>
-          </li>
-        ))}
+        {filtered.map((room) => {
+          const count = unread[room.id] ?? 0;
+          return (
+            <li key={room.id}>
+              <button
+                type="button"
+                className={room.id === activeRoomId ? "active" : ""}
+                onClick={() => onEnter(room)}
+              >
+                <Icon name="hash" size={16} className="rooms__hash" />
+                <span className="rooms__name">{room.name}</span>
+                {count > 0 && (
+                  <span className="unread-badge" aria-hidden="true">
+                    {count > 99 ? "99+" : count}
+                  </span>
+                )}
+                {!room.member && <span className="tag">join</span>}
+                {count > 0 && <span className="visually-hidden">{`${count} unread`}</span>}
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </aside>
   );

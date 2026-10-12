@@ -2,8 +2,10 @@ import { Fragment, useEffect, useRef, useState, type FormEvent, type KeyboardEve
 
 import type { Message, PresenceUser, Room } from "../api/types";
 import { formatDayLabel, formatMessageTime, isSameDay, shouldGroup } from "../chat/messages";
+import { linkified } from "../chat/linkify";
 import type { ConnectionStatus } from "../hooks/useChatRoom";
 import { Avatar } from "./Avatar";
+import { EmojiPicker } from "./EmojiPicker";
 import { Icon } from "./Icon";
 
 export interface ChatPanelProps {
@@ -144,6 +146,20 @@ export function ChatPanel({
     }
   };
 
+  const insertEmoji = (emoji: string) => {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? draft.length;
+    const end = textarea?.selectionEnd ?? start;
+    const next = `${draft.slice(0, start)}${emoji}${draft.slice(end)}`;
+    setDraft(next);
+    window.requestAnimationFrame(() => {
+      const position = start + emoji.length;
+      textarea?.focus();
+      textarea?.setSelectionRange(position, position);
+      resize();
+    });
+  };
+
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     submit();
@@ -225,7 +241,22 @@ export function ChatPanel({
                 <div className="message__body">
                   <div className="bubble">
                     {!own && !grouped && <span className="author">{message.username}</span>}
-                    <p>{message.body}</p>
+                    <p>
+                      {linkified(message.body).map((segment, partIndex) =>
+                        segment.href !== null ? (
+                          <a
+                            key={partIndex}
+                            href={segment.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {segment.text}
+                          </a>
+                        ) : (
+                          <Fragment key={partIndex}>{segment.text}</Fragment>
+                        ),
+                      )}
+                    </p>
                   </div>
                   <time className="message__time" dateTime={message.created_at}>
                     {formatMessageTime(message.created_at)}
@@ -257,6 +288,7 @@ export function ChatPanel({
       )}
 
       <form className="composer" onSubmit={onSubmit}>
+        <EmojiPicker onPick={insertEmoji} disabled={!live} />
         <textarea
           ref={textareaRef}
           value={draft}
