@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { EMOJIS } from "../chat/emojis";
 import { Icon } from "./Icon";
@@ -11,6 +11,8 @@ interface EmojiPickerProps {
 export function EmojiPicker({ onPick, disabled }: EmojiPickerProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popId = useId();
 
   useEffect(() => {
     if (!open) {
@@ -24,6 +26,7 @@ export function EmojiPicker({ onPick, disabled }: EmojiPickerProps) {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
         setOpen(false);
+        triggerRef.current?.focus();
       }
     };
     document.addEventListener("pointerdown", onPointerDown);
@@ -37,18 +40,21 @@ export function EmojiPicker({ onPick, disabled }: EmojiPickerProps) {
   return (
     <div className="emoji" ref={rootRef}>
       <button
+        ref={triggerRef}
         type="button"
         className="btn btn--ghost btn--icon composer__emoji"
         onClick={() => setOpen((current) => !current)}
         disabled={disabled}
         aria-label="Insert emoji"
         aria-expanded={open}
+        aria-haspopup="dialog"
+        aria-controls={open ? popId : undefined}
         title="Emoji"
       >
         <Icon name="smile" size={18} />
       </button>
       {open && (
-        <div className="emoji__pop">
+        <div className="emoji__pop" id={popId} role="dialog" aria-label="Emoji picker">
           {EMOJIS.map((entry) => (
             <button
               key={entry.emoji}

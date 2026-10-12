@@ -9,7 +9,7 @@ import {
   type UnreadMap,
 } from "./unread";
 import { EMOJIS } from "./emojis";
-import { hasAnyLink, linkified } from "./linkify";
+import { linkified } from "./linkify";
 
 describe("unread map", () => {
   it("increments per room", () => {
@@ -89,9 +89,16 @@ describe("linkified", () => {
     expect(segments[2]?.text).toBe(".");
   });
 
-  it("hasAnyLink short-circuits correctly", () => {
-    expect(hasAnyLink("no links")).toBe(false);
-    expect(hasAnyLink("try https://a.com")).toBe(true);
+  it("strips an unbalanced closing bracket", () => {
+    const segments = linkified("(see https://a.com/x)");
+    expect(segments[1]?.href).toBe("https://a.com/x");
+    expect(segments[2]?.text).toBe(")");
+  });
+
+  it("keeps balanced brackets inside a URL", () => {
+    const url = "https://en.wikipedia.org/wiki/Foo_(bar)";
+    const segments = linkified(`read ${url}`);
+    expect(segments[1]?.href).toBe(url);
   });
 });
 

@@ -47,5 +47,3 @@ export const EMOJIS: EmojiEntry[] = [
   { emoji: "👀", name: "eyes" },
   { emoji: "💡", name: "idea" },
 ];
-
-export const EMOJI_BY_NAME = new Map(EMOJIS.map((entry) => [entry.name, entry.emoji]));

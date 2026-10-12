@@ -136,11 +136,12 @@ export function RoomList({
                 <Icon name="hash" size={16} className="rooms__hash" />
                 <span className="rooms__name">{room.name}</span>
                 {count > 0 && (
-                  <span className="unread-badge" aria-label={`${count} unread`}>
+                  <span className="unread-badge" aria-hidden="true">
                     {count > 99 ? "99+" : count}
                   </span>
                 )}
                 {!room.member && <span className="tag">join</span>}
+                {count > 0 && <span className="visually-hidden">{`${count} unread`}</span>}
               </button>
             </li>
           );

@@ -7,9 +7,7 @@ interface ToastHostProps {
 }
 
 export function ToastHost({ toasts, onDismiss }: ToastHostProps) {
-  if (toasts.length === 0) {
-    return null;
-  }
+  // The live region stays mounted so screen readers announce the first toast.
   return (
     <div className="toasts" role="status" aria-live="polite">
       {toasts.map((toast) => (

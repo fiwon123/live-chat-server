@@ -6,6 +6,11 @@ export type Theme = "dark" | "light";
 
 const THEME_KEY = "livechat.theme";
 
+const THEME_COLORS: Record<Theme, string> = {
+  dark: "#0a1113",
+  light: "#f4f7f6",
+};
+
 function readInitialTheme(): Theme {
   try {
     const stored = window.localStorage.getItem(THEME_KEY);
@@ -23,6 +28,9 @@ export function useTheme() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", THEME_COLORS[theme]);
     try {
       window.localStorage.setItem(THEME_KEY, theme);
     } catch {
