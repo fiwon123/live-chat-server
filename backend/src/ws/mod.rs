@@ -28,7 +28,8 @@ use crate::routes::rooms::MessageResponse;
 use crate::storage::reactions::MAX_EMOJI_LEN;
 use crate::storage::{Messages, Reactions, RoomMemberships};
 
-/// Maximum length of a chat message body (in chars, after trimming).
+/// Maximum length of a chat message body (in chars, after trimming and
+/// newline normalization).
 pub const MAX_MESSAGE_LEN: usize = 4000;
 
 /// Minimum gap between relayed `typing` events from one session. Typing is
@@ -372,10 +373,13 @@ fn parse_incoming(text: &str) -> Result<Incoming, serde_json::Error> {
 }
 
 /// Validate a message body: trimmed, non-empty, at most [`MAX_MESSAGE_LEN`],
-/// no control characters (mirrors room-name validation: embedded NULs must
-/// not reach Postgres).
+/// no control characters except newlines — multiline messages are a designed
+/// feature (the composer advertises Shift+Enter for a new line and bubbles
+/// render with `white-space: pre-wrap`). CRLF and lone `\r` are normalized to
+/// `\n`; every other control character (NUL, ESC, tab, ...) is rejected, so
+/// embedded NULs must not reach Postgres.
 fn validate_body(body: &str) -> Result<String, AppError> {
-    let body = body.trim().to_string();
+    let body = body.trim().replace("\r\n", "\n").replace('\r', "\n");
     if body.is_empty() {
         return Err(AppError::BadRequest(
             "message must not be empty".to_string(),
@@ -386,7 +390,7 @@ fn validate_body(body: &str) -> Result<String, AppError> {
             "message must be at most {MAX_MESSAGE_LEN} characters"
         )));
     }
-    if body.chars().any(char::is_control) {
+    if body.chars().any(|c| c.is_control() && c != '\n') {
         return Err(AppError::BadRequest(
             "message must not contain control characters".to_string(),
         ));
@@ -450,6 +454,40 @@ mod tests {
     fn rejects_control_characters() {
         assert!(validate_body("hello\u{0}world").is_err());
         assert!(validate_body("tab\there").is_err());
+        assert!(validate_body("esc\u{1b}ape").is_err());
+        // VT, FF, and NEL are control characters too; only LF is exempt.
+        assert!(validate_body("v\u{0b}t").is_err());
+        assert!(validate_body("f\u{0c}f").is_err());
+        assert!(validate_body("n\u{85}l").is_err());
+    }
+
+    #[test]
+    fn trims_surrounding_newlines_but_keeps_inner_ones() {
+        assert_eq!(
+            validate_body("  \nhello\nworld\n  ").unwrap(),
+            "hello\nworld"
+        );
+        // A body that is only whitespace/newlines trims to empty and is rejected.
+        assert!(validate_body("\n\n  \n").is_err());
+    }
+
+    #[test]
+    fn counts_length_after_newline_normalization() {
+        // Each CRLF collapses to one LF, so this is 3 chars, not 5.
+        assert_eq!(validate_body("a\r\nb").unwrap().chars().count(), 3);
+    }
+
+    #[test]
+    fn accepts_multiline_bodies() {
+        let body = validate_body("line one\nline two").unwrap();
+        assert_eq!(body, "line one\nline two");
+    }
+
+    #[test]
+    fn normalizes_crlf_and_cr_to_lf() {
+        assert_eq!(validate_body("a\r\nb").unwrap(), "a\nb");
+        assert_eq!(validate_body("a\rb").unwrap(), "a\nb");
+        assert_eq!(validate_body("a\r\nb\r\nc").unwrap(), "a\nb\nc");
     }
 
     #[test]

@@ -569,6 +569,78 @@ async fn invalid_sends_get_error_events_but_connection_survives() {
 }
 
 #[tokio::test]
+async fn multiline_messages_broadcast_and_persist_with_normalized_newlines() {
+    let Some(server) = spawn_server().await else {
+        return;
+    };
+    let (token, _) = register_user(&server.app).await;
+    let (room_id, _) = create_room(&server.app, &token, "multiline").await;
+
+    let mut stream = connect_ws(&server, &token, &room_id).await;
+    let _ = next_event_of_type(&mut stream, "presence").await;
+
+    // A message with real `\n` newlines is accepted body-for-body.
+    send_text(
+        &mut stream,
+        &json!({"type": "send", "body": "line one\nline two"}).to_string(),
+    )
+    .await;
+    let event = next_event_of_type(&mut stream, "message").await;
+    assert_eq!(event["message"]["body"], "line one\nline two");
+
+    // CRLF and lone CR are normalized to LF so any client's line endings land intact.
+    send_text(
+        &mut stream,
+        &json!({"type": "send", "body": "a\r\nb\r\nc"}).to_string(),
+    )
+    .await;
+    let event = next_event_of_type(&mut stream, "message").await;
+    assert_eq!(event["message"]["body"], "a\nb\nc");
+
+    send_text(
+        &mut stream,
+        &json!({"type": "send", "body": "d\re"}).to_string(),
+    )
+    .await;
+    let event = next_event_of_type(&mut stream, "message").await;
+    assert_eq!(event["message"]["body"], "d\ne");
+
+    // Other control characters are still rejected (NUL must not reach Postgres).
+    send_text(
+        &mut stream,
+        &json!({"type": "send", "body": "bad\u{0}nul"}).to_string(),
+    )
+    .await;
+    let error = next_event_of_type(&mut stream, "error").await;
+    assert!(
+        error["message"].as_str().unwrap().contains("control"),
+        "error message: {}",
+        error["message"]
+    );
+
+    // All three valid messages persisted with their (normalized) newlines.
+    let (status, history) = request(
+        &server.app,
+        "GET",
+        &format!("/api/rooms/{room_id}/messages"),
+        None,
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let history = history.as_array().unwrap();
+    assert_eq!(history.len(), 3);
+    // History is newest-first and ties break on a random UUID, so compare the
+    // persisted bodies order-independently: all three, newlines intact.
+    let mut bodies: Vec<&str> = history
+        .iter()
+        .map(|m| m["body"].as_str().unwrap())
+        .collect();
+    bodies.sort_unstable();
+    assert_eq!(bodies, vec!["a\nb\nc", "d\ne", "line one\nline two"]);
+}
+
+#[tokio::test]
 async fn revoked_membership_closes_session_without_delivery() {
     let Some(server) = spawn_server().await else {
         return;
