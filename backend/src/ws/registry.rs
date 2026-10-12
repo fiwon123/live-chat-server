@@ -68,19 +68,19 @@ impl RoomRegistry {
     ///
     /// Subscribe happens before [`RoomRegistry::join`] so no room event is
     /// missed. When Redis is configured but the subscription fails, the
-    /// session falls back to the local channel (nothing else on this instance
-    /// publishes locally in that mode, so the session simply stays quiet until
-    /// Redis is reachable again).
+    /// session gets [`RoomEvents::Unavailable`] and closes so the client can
+    /// reconnect and retry via its existing reconnect loop.
     pub async fn events(&self, room_id: Uuid) -> RoomEvents {
-        if let Some(redis) = &self.redis {
-            match redis.subscribe(room_id).await {
-                Ok(subscriber) => return RoomEvents::PubSub(subscriber),
+        match &self.redis {
+            Some(redis) => match redis.subscribe(room_id).await {
+                Ok(subscriber) => RoomEvents::PubSub(subscriber),
                 Err(err) => {
-                    tracing::error!(room_id = %room_id, error = ?err, "redis subscribe failed; falling back to in-memory channel");
+                    tracing::error!(room_id = %room_id, error = ?err, "redis subscribe failed; closing session so the client can reconnect");
+                    RoomEvents::Unavailable
                 }
-            }
+            },
+            None => RoomEvents::Local(self.subscribe(room_id).await),
         }
-        RoomEvents::Local(self.subscribe(room_id).await)
     }
 
     /// Register a connection and announce `joined` on the first one only.
@@ -199,6 +199,10 @@ pub enum RoomEvents {
     Local(broadcast::Receiver<WsOutgoing>),
     /// Cross-instance subscription over Redis Pub/Sub.
     PubSub(RoomSubscriber),
+    /// Pub/sub is configured but this session could not subscribe. `recv()`
+    /// reports [`RecvOutcome::Closed`] immediately so the session closes and
+    /// the client reconnects (retrying the subscription).
+    Unavailable,
 }
 
 /// What a session's next room event turned into.
@@ -221,14 +225,20 @@ impl RoomEvents {
                 Err(broadcast::error::RecvError::Lagged(skipped)) => RecvOutcome::Lagged(skipped),
                 Err(broadcast::error::RecvError::Closed) => RecvOutcome::Closed,
             },
-            RoomEvents::PubSub(subscriber) => match subscriber.next().await {
-                Some(Ok(event)) => RecvOutcome::Event(event),
-                Some(Err(err)) => {
-                    tracing::error!(error = ?err, "redis subscription error; closing session");
-                    RecvOutcome::Closed
+            RoomEvents::PubSub(subscriber) => loop {
+                match subscriber.next().await {
+                    Some(Ok(event)) => return RecvOutcome::Event(event),
+                    Some(Err(err)) => {
+                        // A single malformed payload (from a stale instance
+                        // mid-deploy or a foreign publisher) skips that event;
+                        // it must not sever every session subscribed to the
+                        // room. Only a dropped connection closes the session.
+                        tracing::error!(error = ?err, "skipping malformed redis room event");
+                    }
+                    None => return RecvOutcome::Closed,
                 }
-                None => RecvOutcome::Closed,
             },
+            RoomEvents::Unavailable => RecvOutcome::Closed,
         }
     }
 }

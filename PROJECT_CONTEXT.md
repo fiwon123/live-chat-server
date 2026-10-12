@@ -80,7 +80,10 @@ frontend/   # React + TypeScript client (Vite): pages, components, API/WS client
   (`npm ci`, `cargo fetch`) rather than passing.
 - Single-server instance to start: live room connections and broadcast channels
   stay in memory. Redis Pub/Sub is only for multi-instance; enable it by setting
-  `REDIS_URL` (the compose redis service is present but unused until then).
+  `REDIS_URL` (the compose redis service is present but unused until then). A
+  mid-flight publish failure drops that one event (history recovers messages);
+  presence refcounts are per-instance, so duplicate tabs of one user across
+  instances can emit spurious join/leave.
 - WebSockets: save each message to PostgreSQL **before broadcasting** it;
   messages must carry IDs and timestamps so clients display them consistently
   across reconnects.
