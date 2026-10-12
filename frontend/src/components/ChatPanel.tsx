@@ -80,6 +80,15 @@ export function ChatPanel({
     }
   }, [live, room.id]);
 
+  // A failed/empty older-page load never changes `messages`, so the effect
+  // above would leave loadingOlderRef stuck — clear it whenever the hook
+  // reports the load finished.
+  useEffect(() => {
+    if (!loadingOlder) {
+      loadingOlderRef.current = false;
+    }
+  }, [loadingOlder]);
+
   const handleScroll = () => {
     const feed = feedRef.current;
     if (!feed) {
