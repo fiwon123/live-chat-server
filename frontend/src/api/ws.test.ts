@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveWsUrl } from "./ws";
+import { encodeSend, encodeTyping, resolveWsUrl } from "./ws";
 
 describe("resolveWsUrl", () => {
   it("builds a ws URL with token and room_id query params", () => {
@@ -19,5 +19,15 @@ describe("resolveWsUrl", () => {
   it("honours an absolute API base", () => {
     const url = resolveWsUrl("http://localhost:8083/api", "http://localhost:5173", "t", "r");
     expect(url.startsWith("ws://localhost:8083/api/ws?")).toBe(true);
+  });
+});
+
+describe("frame encoding", () => {
+  it("encodes a send frame", () => {
+    expect(JSON.parse(encodeSend("hi"))).toEqual({ type: "send", body: "hi" });
+  });
+
+  it("encodes a typing frame with no payload", () => {
+    expect(JSON.parse(encodeTyping())).toEqual({ type: "typing" });
   });
 });

@@ -166,17 +166,25 @@ a plain-text `400`.
 
 ### Client → server frames
 
-One message type, as a text frame:
+Two message types, as text frames:
 
 ```json
 { "type": "send", "body": "hello everyone" }
 ```
 
-Validation (per message, on every send):
+```json
+{ "type": "typing" }
+```
+
+Validation for `send` (per message, on every send):
 
 - `body` is trimmed, must be non-empty.
 - At most **4000 characters**.
 - No control characters (matches room-name rules; NUL must not reach Postgres).
+
+`typing` carries no payload — the server knows the sender. It is throttled to at
+most one relayed event per session every **1.5 s**; anything faster is dropped
+silently, and the connection stays open.
 
 ### Server → client frames
 
@@ -198,6 +206,10 @@ Text frames, JSON, tagged by `type` (`snake_case`):
 { "type": "error", "message": "message must not be empty" }
 ```
 
+```json
+{ "type": "typing", "user": { "id": "<uuid>", "username": "alice" } }
+```
+
 Semantics:
 
 - **Save before broadcast**: a `send` frame is inserted into Postgres first;
@@ -214,6 +226,11 @@ Semantics:
   (`POST /api/rooms/{id}/leave`) means the next room message closes the
   session instead of being delivered. Connections stop at ~64 KiB per message
   (server-enforced frame cap).
+- **Typing is ephemeral**: `typing` events are relayed room-wide, never
+  persisted, and excluded from history. The server throttles them per session
+  (1.5 s); clients should additionally debounce and clear the indicator shortly
+  after the last event (there is no explicit "stopped typing" frame — send a
+  message or let the client timeout do it).
 - Events are broadcast room-wide only; room A clients never see room B's
   traffic. There is no history replay on connect — fetch
   `GET /api/rooms/{id}/messages` after upgrading if needed.

@@ -1,7 +1,13 @@
 import { Fragment, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import type { Message, PresenceUser, Room } from "../api/types";
-import { formatDayLabel, formatMessageTime, isSameDay, shouldGroup } from "../chat/messages";
+import {
+  formatDayLabel,
+  formatMessageTime,
+  isSameDay,
+  shouldGroup,
+  typingLabel,
+} from "../chat/messages";
 import { linkified } from "../chat/linkify";
 import type { ConnectionStatus } from "../hooks/useChatRoom";
 import { Avatar } from "./Avatar";
@@ -13,11 +19,13 @@ export interface ChatPanelProps {
   currentUserId: string;
   messages: Message[];
   online: PresenceUser[];
+  typing: PresenceUser[];
   status: ConnectionStatus;
   error: string | null;
   hasMore: boolean;
   loadingOlder: boolean;
   onSend: (body: string) => boolean;
+  onTyping: () => void;
   onLoadOlder: () => void;
   onLeave: () => void;
 }
@@ -35,11 +43,13 @@ export function ChatPanel({
   currentUserId,
   messages,
   online,
+  typing,
   status,
   error,
   hasMore,
   loadingOlder,
   onSend,
+  onTyping,
   onLoadOlder,
   onLeave,
 }: ChatPanelProps) {
@@ -175,6 +185,7 @@ export function ChatPanel({
   const shownOnline = online.slice(0, 3);
   const onlineLabel = online.length === 0 ? "0 online" : `${online.length} online`;
   const onlineTitle = online.map((user) => user.username).join(", ");
+  const typingText = typingLabel(typing);
 
   return (
     <section className="chat">
@@ -280,6 +291,19 @@ export function ChatPanel({
         </button>
       )}
 
+      <div className="typing" aria-live="polite" aria-atomic="true">
+        {typingText !== null && (
+          <>
+            <span className="typing__dots" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+            {typingText}
+          </>
+        )}
+      </div>
+
       {error !== null && (
         <p className="error error--banner chat__error" role="alert">
           <Icon name="alert" size={15} />
@@ -294,6 +318,7 @@ export function ChatPanel({
           value={draft}
           onChange={(event) => {
             setDraft(event.target.value);
+            onTyping();
             resize();
           }}
           onKeyDown={onKeyDown}
