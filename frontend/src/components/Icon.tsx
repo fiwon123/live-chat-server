@@ -6,6 +6,7 @@ export type IconName =
   | "send"
   | "smile"
   | "user"
+  | "lock"
   | "logout"
   | "close"
   | "search"
@@ -43,6 +44,12 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
       <path d="M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
+    </>
+  ),
+  lock: (
+    <>
+      <rect x="4" y="11" width="16" height="9" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
     </>
   ),
   logout: (

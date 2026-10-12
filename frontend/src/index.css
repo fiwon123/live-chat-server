@@ -28,6 +28,8 @@
   --good: #34d399;
   --warn: #f5c451;
   --bad: #fb7185;
+  --bad-soft: rgba(251, 113, 133, 0.1);
+  --bad-border: rgba(251, 113, 133, 0.35);
 
   /* ---- Effects ---- */
   --ring: 0 0 0 3px rgba(45, 212, 191, 0.35);
