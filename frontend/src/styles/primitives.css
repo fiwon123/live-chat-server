@@ -26,6 +26,19 @@
   color: var(--muted);
 }
 
+/* ----- Avatar ----- */
+
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #04231f;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  user-select: none;
+}
+
 /* ----- Logo ----- */
 
 .logo {
