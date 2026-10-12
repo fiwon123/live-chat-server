@@ -47,7 +47,7 @@ function App() {
 
   // Reflect unread messages in the tab title.
   useEffect(() => {
-    document.title = total > 0 ? `(${total}) live-chat` : "live-chat";
+    document.title = total > 0 ? `(${total}) Live Chat` : "Live Chat";
   }, [total]);
 
   // Search rooms with Ctrl/Cmd+K.
