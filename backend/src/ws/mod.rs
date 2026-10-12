@@ -28,7 +28,8 @@ use crate::routes::rooms::MessageResponse;
 use crate::storage::reactions::MAX_EMOJI_LEN;
 use crate::storage::{Messages, Reactions, RoomMemberships};
 
-/// Maximum length of a chat message body (in chars, after trimming).
+/// Maximum length of a chat message body (in chars, after trimming and
+/// newline normalization).
 pub const MAX_MESSAGE_LEN: usize = 4000;
 
 /// Minimum gap between relayed `typing` events from one session. Typing is
@@ -454,6 +455,26 @@ mod tests {
         assert!(validate_body("hello\u{0}world").is_err());
         assert!(validate_body("tab\there").is_err());
         assert!(validate_body("esc\u{1b}ape").is_err());
+        // VT, FF, and NEL are control characters too; only LF is exempt.
+        assert!(validate_body("v\u{0b}t").is_err());
+        assert!(validate_body("f\u{0c}f").is_err());
+        assert!(validate_body("n\u{85}l").is_err());
+    }
+
+    #[test]
+    fn trims_surrounding_newlines_but_keeps_inner_ones() {
+        assert_eq!(
+            validate_body("  \nhello\nworld\n  ").unwrap(),
+            "hello\nworld"
+        );
+        // A body that is only whitespace/newlines trims to empty and is rejected.
+        assert!(validate_body("\n\n  \n").is_err());
+    }
+
+    #[test]
+    fn counts_length_after_newline_normalization() {
+        // Each CRLF collapses to one LF, so this is 3 chars, not 5.
+        assert_eq!(validate_body("a\r\nb").unwrap().chars().count(), 3);
     }
 
     #[test]
