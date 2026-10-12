@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
-import type { ConnectionStatus } from "../hooks/useChatRoom";
 import type { Message, PresenceUser, Room } from "../api/types";
+import { formatDayLabel, formatMessageTime, isSameDay, shouldGroup } from "../chat/messages";
+import type { ConnectionStatus } from "../hooks/useChatRoom";
+import { Avatar } from "./Avatar";
+import { Icon } from "./Icon";
 
 export interface ChatPanelProps {
   room: Room;
@@ -25,13 +28,6 @@ const STATUS_LABEL: Record<ConnectionStatus, string> = {
   error: "connection problem",
 };
 
-function formatTime(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime())
-    ? ""
-    : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
 export function ChatPanel({
   room,
   currentUserId,
@@ -46,23 +42,105 @@ export function ChatPanel({
   onLeave,
 }: ChatPanelProps) {
   const [draft, setDraft] = useState("");
-  const feedRef = useRef<HTMLDivElement>(null);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
-  // Follow the conversation as it grows.
+  const feedRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const pinnedRef = useRef(true);
+  const loadingOlderRef = useRef(false);
+  const prevHeightRef = useRef(0);
+
+  const live = status === "open";
+
+  // Follow the conversation when pinned; keep position when loading older pages.
   useEffect(() => {
     const feed = feedRef.current;
-    if (feed) {
+    if (!feed) {
+      return;
+    }
+    if (loadingOlderRef.current) {
+      loadingOlderRef.current = false;
+      feed.scrollTop = feed.scrollHeight - prevHeightRef.current;
+      return;
+    }
+    if (pinnedRef.current) {
       feed.scrollTop = feed.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, room.id]);
+
+  // On (re)connect, anchor to the newest message.
+  useEffect(() => {
+    if (live) {
+      pinnedRef.current = true;
+      const feed = feedRef.current;
+      if (feed) {
+        feed.scrollTop = feed.scrollHeight;
+      }
+      setShowScrollButton(false);
+    }
+  }, [live, room.id]);
+
+  // A failed/empty older-page load never changes `messages`, so the effect
+  // above would leave loadingOlderRef stuck — clear it whenever the hook
+  // reports the load finished.
+  useEffect(() => {
+    if (!loadingOlder) {
+      loadingOlderRef.current = false;
+    }
+  }, [loadingOlder]);
+
+  const handleScroll = () => {
+    const feed = feedRef.current;
+    if (!feed) {
+      return;
+    }
+    const distance = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
+    const pinned = distance < 64;
+    pinnedRef.current = pinned;
+    setShowScrollButton(!pinned);
+  };
+
+  const scrollToBottom = () => {
+    const feed = feedRef.current;
+    if (!feed) {
+      return;
+    }
+    feed.scrollTo({
+      top: feed.scrollHeight,
+      behavior: pinnedRef.current ? "auto" : "smooth",
+    });
+    pinnedRef.current = true;
+    setShowScrollButton(false);
+  };
+
+  const loadOlderClicked = () => {
+    const feed = feedRef.current;
+    if (feed) {
+      prevHeightRef.current = feed.scrollHeight;
+      loadingOlderRef.current = true;
+    }
+    onLoadOlder();
+  };
+
+  const resize = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+  };
 
   const submit = () => {
     const body = draft.trim();
-    if (body.length === 0) {
+    if (body.length === 0 || !live) {
       return;
     }
     if (onSend(body)) {
       setDraft("");
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
     }
   };
 
@@ -78,48 +156,114 @@ export function ChatPanel({
     }
   };
 
-  const live = status === "open";
+  const shownOnline = online.slice(0, 3);
+  const onlineLabel = online.length === 0 ? "0 online" : `${online.length} online`;
+  const onlineTitle = online.map((user) => user.username).join(", ");
 
   return (
     <section className="chat">
       <header>
-        <div>
+        <div className="chat__title">
+          <Icon name="hash" size={18} className="chat__hash" />
           <h2>{room.name}</h2>
           <span className={`status status-${status}`}>{STATUS_LABEL[status]}</span>
         </div>
-        <div className="online" title={online.map((user) => user.username).join(", ")}>
-          <span className="dot" /> {online.length} online
+
+        <div className="online" title={`${onlineLabel}: ${onlineTitle}`}>
+          <span className="online__avs">
+            {shownOnline.map((user) => (
+              <Avatar key={user.id} name={user.username} size={22} />
+            ))}
+          </span>
+          {onlineLabel}
         </div>
-        <button type="button" className="leave" onClick={onLeave}>
-          Leave
+
+        <button
+          type="button"
+          className="btn btn--ghost btn--icon"
+          onClick={onLeave}
+          aria-label={`Leave ${room.name}`}
+          title="Leave room"
+        >
+          <Icon name="logout" size={18} />
         </button>
       </header>
 
-      <div className="feed" ref={feedRef}>
+      <div className="feed" ref={feedRef} onScroll={handleScroll}>
         {hasMore && (
-          <button type="button" className="older" onClick={onLoadOlder} disabled={loadingOlder}>
+          <button
+            type="button"
+            className="older"
+            onClick={loadOlderClicked}
+            disabled={loadingOlder}
+          >
             {loadingOlder ? "Loading…" : "Load earlier messages"}
           </button>
         )}
-        {messages.length === 0 && <p className="muted">No messages yet — say hello.</p>}
-        {messages.map((message) => {
+
+        {messages.length === 0 && (
+          <div className="chat__empty">
+            <Icon name="message" size={22} />
+            <p className="muted">No messages yet — say hello.</p>
+          </div>
+        )}
+
+        {messages.map((message, index) => {
+          const previous = index > 0 ? messages[index - 1] : undefined;
           const own = message.user_id === currentUserId;
+          const newDay = previous === undefined || !isSameDay(previous, message);
+          const grouped = previous !== undefined && shouldGroup(previous, message);
           return (
-            <article key={message.id} className={own ? "message own" : "message"}>
-              <div className="meta">
-                <span className="author">{own ? "you" : message.username}</span>
-                <time dateTime={message.created_at}>{formatTime(message.created_at)}</time>
-              </div>
-              <p>{message.body}</p>
-            </article>
+            <Fragment key={message.id}>
+              {newDay && (
+                <div className="divider" role="separator">
+                  <span>{formatDayLabel(message.created_at)}</span>
+                </div>
+              )}
+              <article className={`message${own ? " own" : ""}${grouped ? " grouped" : ""}`}>
+                {!own && !grouped && <Avatar name={message.username} size={34} />}
+                <div className="message__body">
+                  <div className="bubble">
+                    {!own && !grouped && <span className="author">{message.username}</span>}
+                    <p>{message.body}</p>
+                  </div>
+                  <time className="message__time" dateTime={message.created_at}>
+                    {formatMessageTime(message.created_at)}
+                  </time>
+                </div>
+              </article>
+            </Fragment>
           );
         })}
       </div>
 
+      {showScrollButton && messages.length > 0 && (
+        <button
+          type="button"
+          className="chat__jump"
+          onClick={scrollToBottom}
+          aria-label="Scroll to newest messages"
+          title="Jump to newest"
+        >
+          <Icon name="arrow-down" size={18} />
+        </button>
+      )}
+
+      {error !== null && (
+        <p className="error error--banner chat__error" role="alert">
+          <Icon name="alert" size={15} />
+          {error}
+        </p>
+      )}
+
       <form className="composer" onSubmit={onSubmit}>
         <textarea
+          ref={textareaRef}
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            resize();
+          }}
           onKeyDown={onKeyDown}
           placeholder={
             live
@@ -127,15 +271,20 @@ export function ChatPanel({
               : "Waiting for connection…"
           }
           maxLength={4000}
-          rows={2}
+          rows={1}
           disabled={!live}
+          aria-label="Message"
         />
-        <button type="submit" disabled={!live || draft.trim().length === 0}>
-          Send
+        <button
+          type="submit"
+          className="btn btn--primary composer__send"
+          disabled={!live || draft.trim().length === 0}
+          aria-label="Send message"
+          title="Send"
+        >
+          <Icon name="send" size={18} />
         </button>
       </form>
-
-      {error !== null && <p className="error">{error}</p>}
     </section>
   );
 }

@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 
 import type { Room } from "../api/types";
+import { Icon } from "./Icon";
 
 export interface RoomListProps {
   rooms: Room[];
@@ -20,7 +21,16 @@ export function RoomList({
   onCreate,
 }: RoomListProps) {
   const [name, setName] = useState("");
+  const [filter, setFilter] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const query = filter.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    if (query.length === 0) {
+      return rooms;
+    }
+    return rooms.filter((room) => room.name.toLowerCase().includes(query));
+  }, [rooms, query]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -39,40 +49,90 @@ export function RoomList({
 
   return (
     <aside className="rooms">
-      <h2>Rooms</h2>
+      <header className="rooms__head">
+        <h2>Rooms</h2>
+        <span className="rooms__count">{rooms.length}</span>
+      </header>
 
-      <form onSubmit={submit}>
+      <form className="rooms__create" onSubmit={submit}>
         <input
           value={name}
           onChange={(event) => setName(event.target.value)}
-          placeholder="new room"
+          placeholder="New room name"
           maxLength={64}
           aria-label="New room name"
         />
-        <button type="submit" disabled={busy || name.trim().length === 0}>
-          Create
+        <button
+          type="submit"
+          className="btn btn--primary btn--icon"
+          disabled={busy || name.trim().length === 0}
+          aria-label="Create room"
+          title="Create room"
+        >
+          <Icon name="plus" size={18} />
         </button>
       </form>
 
-      {error !== null && <p className="error">{error}</p>}
-      {loading && rooms.length === 0 && <p className="muted">Loading…</p>}
+      <div className="rooms__search">
+        <Icon name="search" size={15} className="rooms__search-icon" />
+        <input
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          placeholder="Filter rooms…"
+          aria-label="Filter rooms"
+        />
+        {filter.length > 0 && (
+          <button
+            type="button"
+            className="rooms__search-clear"
+            onClick={() => setFilter("")}
+            aria-label="Clear filter"
+          >
+            <Icon name="close" size={14} />
+          </button>
+        )}
+      </div>
 
-      <ul>
-        {rooms.map((room) => (
+      {error !== null && <p className="error">{error}</p>}
+
+      {loading && rooms.length === 0 && (
+        <div className="rooms__skeleton" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+      )}
+
+      {!loading && rooms.length === 0 && (
+        <div className="rooms__empty">
+          <Icon name="hash" size={22} />
+          <p className="muted">
+            No rooms yet —
+            <br />
+            create the first one.
+          </p>
+        </div>
+      )}
+
+      {!loading && rooms.length > 0 && filtered.length === 0 && (
+        <p className="muted rooms__none">No rooms match “{query}”.</p>
+      )}
+
+      <ul className="rooms__list">
+        {filtered.map((room) => (
           <li key={room.id}>
             <button
               type="button"
               className={room.id === activeRoomId ? "active" : ""}
               onClick={() => onEnter(room)}
             >
-              <span className="name">{room.name}</span>
+              <Icon name="hash" size={16} className="rooms__hash" />
+              <span className="rooms__name">{room.name}</span>
               {!room.member && <span className="tag">join</span>}
             </button>
           </li>
         ))}
       </ul>
-
-      {rooms.length === 0 && !loading && <p className="muted">No rooms yet — create one.</p>}
     </aside>
   );
 }

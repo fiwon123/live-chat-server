@@ -4,7 +4,9 @@ import { api } from "./api/endpoints";
 import { messageOf } from "./api/client";
 import type { Room } from "./api/types";
 import { AuthScreen } from "./components/AuthScreen";
+import { Avatar } from "./components/Avatar";
 import { ChatPanel } from "./components/ChatPanel";
+import { Icon } from "./components/Icon";
 import { Logo } from "./components/Logo";
 import { RoomList } from "./components/RoomList";
 import { useAuth } from "./hooks/useAuth";
@@ -20,6 +22,7 @@ function App() {
   const [roomsLoading, setRoomsLoading] = useState(false);
   const [roomsError, setRoomsError] = useState<string | null>(null);
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const token = auth.token ?? "";
   const chat = useChatRoom(token, activeRoom?.id ?? "");
@@ -47,6 +50,7 @@ function App() {
       setRooms([]);
       setActiveRoom(null);
       setRoomsError(null);
+      setSidebarOpen(false);
     }
   }, [auth.status, refreshRooms]);
 
@@ -120,20 +124,41 @@ function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <Logo withWordmark size={24} />
-        <span className="who">{auth.user.username}</span>
-        <button type="button" onClick={auth.logout}>
-          Log out
+        <button
+          type="button"
+          className="btn btn--ghost btn--icon topbar__menu"
+          onClick={() => setSidebarOpen((open) => !open)}
+          aria-label="Toggle room list"
+          aria-expanded={sidebarOpen}
+        >
+          <Icon name="menu" size={20} />
         </button>
+        <Logo withWordmark size={24} />
+        <div className="topbar__right">
+          <Avatar name={auth.user.username} size={28} />
+          <span className="who">{auth.user.username}</span>
+          <button
+            type="button"
+            className="btn btn--ghost btn--icon"
+            onClick={auth.logout}
+            aria-label="Log out"
+            title="Log out"
+          >
+            <Icon name="logout" size={18} />
+          </button>
+        </div>
       </header>
 
-      <div className="body">
+      <div className={`body${sidebarOpen ? " sidebar-open" : ""}`}>
         <RoomList
           rooms={rooms}
           activeRoomId={activeRoom?.id ?? null}
           loading={roomsLoading}
           error={roomsError}
-          onEnter={(room) => void enterRoom(room)}
+          onEnter={(room) => {
+            setSidebarOpen(false);
+            void enterRoom(room);
+          }}
           onCreate={createRoom}
         />
 
@@ -153,7 +178,10 @@ function App() {
           />
         ) : (
           <section className="chat empty">
-            <p className="muted">Select a room to start chatting.</p>
+            <div className="chat__empty">
+              <Icon name="message" size={26} />
+              <p className="muted">Select a room to start chatting.</p>
+            </div>
           </section>
         )}
       </div>
