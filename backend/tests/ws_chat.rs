@@ -302,15 +302,18 @@ async fn typing_broadcasts_within_room_only_and_is_not_persisted() {
     assert_eq!(typing["user"]["username"], alice_name);
     assert_eq!(typing["user"]["id"], alice_id);
 
-    // Carol (different room) must not see it.
-    assert_no_event(&mut carol, Duration::from_millis(300)).await;
-
-    // A second typing frame within the throttle window is dropped server-side.
+    // A second typing frame within the throttle window is dropped server-side
+    // (sent immediately, so well inside the 1.5 s gate even on a slow machine).
     send_text(&mut alice, r#"{"type":"typing"}"#).await;
     assert_no_event(&mut bob, Duration::from_millis(300)).await;
 
-    // The latest typing wins even with a concurrent send, proving both arms
-    // still work after the typing frame (connection survives, nothing lost).
+    // The sender never receives its own typing event.
+    assert_no_event(&mut alice, Duration::from_millis(300)).await;
+
+    // Carol (different room) must not see it.
+    assert_no_event(&mut carol, Duration::from_millis(300)).await;
+
+    // The connection survives the typing frames: a real message still flows.
     let expected = format!("hello {bob_name}");
     send_text(
         &mut alice,

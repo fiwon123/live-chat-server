@@ -57,6 +57,8 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
       window.clearTimeout(timer);
     }
     typingTimersRef.current.clear();
+    // A new room deserves an immediate typing frame, not the old room's gap.
+    typingSentAtRef.current = 0;
     setTyping({});
   }, []);
 
@@ -179,7 +181,7 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
         setStatus("open");
       };
       socket.onmessage = (event) => {
-        if (typeof event.data !== "string") {
+        if (cancelled || typeof event.data !== "string") {
           return;
         }
         try {

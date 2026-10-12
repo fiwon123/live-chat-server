@@ -118,6 +118,10 @@ pub async fn run_session(
                         if send_json(&mut sender, &event).await.is_err() { break; }
                     }
                     Ok(event) => {
+                        // A user does not need their own typing echoed back.
+                        if matches!(&event, WsOutgoing::Typing { user } if user.id == user_id) {
+                            continue;
+                        }
                         if send_json(&mut sender, &event).await.is_err() { break; }
                     }
                     Err(RecvError::Lagged(skipped)) => {
@@ -238,8 +242,16 @@ async fn handle_text(text: &str, ctx: &mut SessionCtx) {
 }
 
 /// Relay an ephemeral `typing` event to the room, membership-checked and
-/// throttled per session. Never persisted.
+/// throttled per session. Never persisted. The gate runs before the membership
+/// query so a client spamming `typing` cannot force a DB round-trip per frame.
 async fn handle_typing(ctx: &mut SessionCtx) {
+    let now = Instant::now();
+    if let Some(last) = ctx.typing_last
+        && now.duration_since(last) < TYPING_THROTTLE
+    {
+        return; // Throttled: silently drop, the room already knows.
+    }
+
     let member = match ctx.memberships.is_member(ctx.room_id, ctx.user_id).await {
         Ok(member) => member,
         Err(err) => {
@@ -251,12 +263,6 @@ async fn handle_typing(ctx: &mut SessionCtx) {
         return send_error(&ctx.direct_tx, "you are not a member of this room").await;
     }
 
-    let now = Instant::now();
-    if let Some(last) = ctx.typing_last
-        && now.duration_since(last) < TYPING_THROTTLE
-    {
-        return; // Throttled: silently drop, the room already knows.
-    }
     ctx.typing_last = Some(now);
 
     ctx.registry

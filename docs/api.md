@@ -228,9 +228,10 @@ Semantics:
   (server-enforced frame cap).
 - **Typing is ephemeral**: `typing` events are relayed room-wide, never
   persisted, and excluded from history. The server throttles them per session
-  (1.5 s); clients should additionally debounce and clear the indicator shortly
-  after the last event (there is no explicit "stopped typing" frame — send a
-  message or let the client timeout do it).
+  (1.5 s) and does **not** echo a sender's own event back to them; clients
+  should also ignore any `typing` frame whose `user.id` is their own. There is
+  no explicit "stopped typing" frame — send a message or let the client
+  timeout do it.
 - Events are broadcast room-wide only; room A clients never see room B's
   traffic. There is no history replay on connect — fetch
   `GET /api/rooms/{id}/messages` after upgrading if needed.

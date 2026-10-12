@@ -185,7 +185,7 @@ export function ChatPanel({
   const shownOnline = online.slice(0, 3);
   const onlineLabel = online.length === 0 ? "0 online" : `${online.length} online`;
   const onlineTitle = online.map((user) => user.username).join(", ");
-  const typingText = typingLabel(typing);
+  const typingText = typingLabel(typing.filter((user) => user.id !== currentUserId));
 
   return (
     <section className="chat">
