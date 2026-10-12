@@ -36,3 +36,9 @@ export function encodeTyping(): string {
   const frame: ClientSend = { type: "typing" };
   return JSON.stringify(frame);
 }
+
+/** Encode a `react` frame that toggles `emoji` on `messageId`. */
+export function encodeReact(messageId: string, emoji: string): string {
+  const frame: ClientSend = { type: "react", message_id: messageId, emoji };
+  return JSON.stringify(frame);
+}

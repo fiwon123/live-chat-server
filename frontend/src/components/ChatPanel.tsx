@@ -9,6 +9,7 @@ import {
   typingLabel,
 } from "../chat/messages";
 import { linkified } from "../chat/linkify";
+import { QUICK_REACTIONS, hasReacted } from "../chat/reactions";
 import type { ConnectionStatus } from "../hooks/useChatRoom";
 import { Avatar } from "./Avatar";
 import { EmojiPicker } from "./EmojiPicker";
@@ -26,6 +27,7 @@ export interface ChatPanelProps {
   loadingOlder: boolean;
   onSend: (body: string) => boolean;
   onTyping: () => void;
+  onReact: (messageId: string, emoji: string) => void;
   onLoadOlder: () => void;
   onLeave: () => void;
 }
@@ -50,6 +52,7 @@ export function ChatPanel({
   loadingOlder,
   onSend,
   onTyping,
+  onReact,
   onLoadOlder,
   onLeave,
 }: ChatPanelProps) {
@@ -269,9 +272,56 @@ export function ChatPanel({
                       )}
                     </p>
                   </div>
+                  {message.reactions.length > 0 && (
+                    <div className="reactions">
+                      {message.reactions.map((group) => {
+                        const mine = hasReacted(group, currentUserId);
+                        return (
+                          <button
+                            key={group.emoji}
+                            type="button"
+                            className={`reaction${mine ? " reaction--mine" : ""}`}
+                            onClick={() => onReact(message.id, group.emoji)}
+                            disabled={!live}
+                            aria-pressed={mine}
+                            aria-label={`${group.emoji}, ${group.count} ${
+                              group.count === 1 ? "reaction" : "reactions"
+                            }`}
+                            title={`${group.count} ${group.count === 1 ? "reaction" : "reactions"}`}
+                          >
+                            <span className="reaction__emoji" aria-hidden="true">
+                              {group.emoji}
+                            </span>
+                            <span className="reaction__count">{group.count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                   <time className="message__time" dateTime={message.created_at}>
                     {formatMessageTime(message.created_at)}
                   </time>
+                </div>
+                <div className="message__actions" role="group" aria-label="Add a reaction">
+                  {QUICK_REACTIONS.map((emoji) => {
+                    const active = message.reactions.some(
+                      (group) => group.emoji === emoji && hasReacted(group, currentUserId),
+                    );
+                    return (
+                      <button
+                        key={emoji}
+                        type="button"
+                        className={`quick-reaction${active ? " quick-reaction--mine" : ""}`}
+                        onClick={() => onReact(message.id, emoji)}
+                        disabled={!live}
+                        aria-pressed={active}
+                        aria-label={`React with ${emoji}`}
+                        title={`React with ${emoji}`}
+                      >
+                        {emoji}
+                      </button>
+                    );
+                  })}
                 </div>
               </article>
             </Fragment>

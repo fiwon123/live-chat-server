@@ -129,11 +129,18 @@ Response `200`:
     "user_id": "<uuid>",
     "username": "alice",
     "body": "hello",
-    "created_at": "<rfc3339>"
+    "created_at": "<rfc3339>",
+    "reactions": [
+      { "emoji": "👍", "count": 2, "user_ids": ["<uuid>", "<uuid>"] }
+    ]
   },
   ...
 ]
 ```
+
+`reactions` groups one entry per emoji on that message; `count` always equals
+`user_ids.length`, and `user_ids` lists every reactor (so the client can
+highlight the caller's own reactions). Messages with no reactions carry `[]`.
 
 | Status | Meaning |
 |--------|---------|
@@ -166,7 +173,7 @@ a plain-text `400`.
 
 ### Client → server frames
 
-Two message types, as text frames:
+Three message types, as text frames:
 
 ```json
 { "type": "send", "body": "hello everyone" }
@@ -174,6 +181,10 @@ Two message types, as text frames:
 
 ```json
 { "type": "typing" }
+```
+
+```json
+{ "type": "react", "message_id": "<uuid>", "emoji": "👍" }
 ```
 
 Validation for `send` (per message, on every send):
@@ -186,12 +197,17 @@ Validation for `send` (per message, on every send):
 most one relayed event per session every **1.5 s**; anything faster is dropped
 silently, and the connection stays open.
 
+`react` **toggles** `emoji` on `message_id` for the calling user: absent → added,
+present → removed. `emoji` is trimmed, must be non-empty, at most **16 chars**,
+and control-character free. The target message must exist **in the caller's
+current room**; otherwise an `error` frame is returned and nothing changes.
+
 ### Server → client frames
 
 Text frames, JSON, tagged by `type` (`snake_case`):
 
 ```json
-{ "type": "message", "message": { "id": "<uuid>", "room_id": "<uuid>", "user_id": "<uuid>", "username": "alice", "body": "hello everyone", "created_at": "<rfc3339>" } }
+{ "type": "message", "message": { "id": "<uuid>", "room_id": "<uuid>", "user_id": "<uuid>", "username": "alice", "body": "hello everyone", "created_at": "<rfc3339>", "reactions": [] } }
 ```
 
 ```json
@@ -210,15 +226,24 @@ Text frames, JSON, tagged by `type` (`snake_case`):
 { "type": "typing", "user": { "id": "<uuid>", "username": "alice" } }
 ```
 
+```json
+{ "type": "reaction", "message_id": "<uuid>", "emoji": "👍", "user_id": "<uuid>", "username": "alice", "added": true }
+```
+
 Semantics:
 
 - **Save before broadcast**: a `send` frame is inserted into Postgres first;
   the broadcast carries the row's `id` and `created_at` (RFC 3339). Every
   client — including the sender — receives the identical `message` event, so
   live view and reconnect history (`/api/rooms/{id}/messages`) always agree.
+- **Reactions**: toggling `react` persists the reaction row (ON CONFLICT DO NOTHING
+  for inserts, DELETE on removal); a `reaction` event is broadcast room-wide
+  (`message_id`, `emoji`, `user_id`, `username`, `added`). The event identifies
+  the actor so clients can update their local lists. Rendering uses
+  `user_ids.length` to compute `count`.
 - **Error frames are non-fatal**: a failed `send` (blank, too long, malformed
-  JSON, unparseable shape) produces an `error` event and the connection stays
-  open. Invalid messages are never persisted.
+  JSON, unparseable shape) or an invalid `react` produces an `error` event and
+  the connection stays open. Invalid messages/reactions are never persisted.
 - **Presence is reference-counted**: a user with several open tabs sees
   `joined` on their first connection and `left` after their last one closes —
   no spurious chatter when a tab closes.

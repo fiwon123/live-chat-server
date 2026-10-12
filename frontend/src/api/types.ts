@@ -26,6 +26,15 @@ export interface Message {
   username: string;
   body: string;
   created_at: string;
+  /** Grouped reactions; empty when nobody has reacted. */
+  reactions: ReactionGroup[];
+}
+
+/** One emoji's reactions on a message. */
+export interface ReactionGroup {
+  emoji: string;
+  count: number;
+  user_ids: string[];
 }
 
 export interface PresenceUser {
@@ -38,7 +47,18 @@ export type ServerEvent =
   | { type: "message"; message: Message }
   | { type: "presence"; event: "joined" | "left"; user: PresenceUser }
   | { type: "typing"; user: PresenceUser }
+  | {
+      type: "reaction";
+      message_id: string;
+      emoji: string;
+      user_id: string;
+      username: string;
+      added: boolean;
+    }
   | { type: "error"; message: string };
 
 /** Frames the client sends (see docs/api.md → "Client → server frames"). */
-export type ClientSend = { type: "send"; body: string } | { type: "typing" };
+export type ClientSend =
+  | { type: "send"; body: string }
+  | { type: "typing" }
+  | { type: "react"; message_id: string; emoji: string };

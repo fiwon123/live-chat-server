@@ -12,7 +12,14 @@ import {
 import type { Message } from "../api/types";
 
 function message(overrides: Partial<Message> & { id: string; created_at: string }): Message {
-  return { room_id: "room", user_id: "user", username: "alice", body: "hi", ...overrides };
+  return {
+    room_id: "room",
+    user_id: "user",
+    username: "alice",
+    body: "hi",
+    reactions: [],
+    ...overrides,
+  };
 }
 
 describe("compareMessages", () => {
