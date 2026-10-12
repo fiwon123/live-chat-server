@@ -20,21 +20,21 @@ export function markRoomRead(map: UnreadMap, roomId: string): UnreadMap {
 /**
  * Reconcile the local map against the server's authoritative per-room counts.
  *
- * Server counts win where they are positive; a local bump is kept only when the
- * server reports zero for a room we already bumped (the list may predate the
- * bump — a message arrived while the tab was hidden). The next sync settles it.
+ * The server is the source of truth: a bump implies the server already
+ * persisted the message (save-before-broadcast), so any fetch that resolves
+ * after a bump reports a count of at least 1. Assigning the server count
+ * (and dropping rooms the server reports as read) can therefore never lose a
+ * live bump; it only retires stale ones.
  */
 export function syncFromRooms(
-  map: UnreadMap,
+  _map: UnreadMap,
   rooms: Array<{ id: string; unread_count: number }>,
 ): UnreadMap {
-  const next = { ...map };
+  const next: UnreadMap = {};
   for (const room of rooms) {
     const count = Math.max(0, Math.floor(room.unread_count));
     if (count > 0) {
-      next[room.id] = Math.max(next[room.id] ?? 0, count);
-    } else if ((next[room.id] ?? 0) === 0) {
-      delete next[room.id];
+      next[room.id] = count;
     }
   }
   return next;

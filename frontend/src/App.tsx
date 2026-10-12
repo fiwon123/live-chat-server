@@ -146,6 +146,20 @@ function App() {
     }
   }, [activeRoom, markRoomReadRemote]);
 
+  // Leaving a room drops any pending trailing read cursor for it; the
+  // mark-all above only runs while a room is open.
+  useEffect(() => {
+    if (activeRoom !== null) {
+      return;
+    }
+    if (readTimerRef.current !== null) {
+      window.clearTimeout(readTimerRef.current);
+      readTimerRef.current = null;
+    }
+    readAtRef.current = 0;
+    lastVisibleMessageRef.current = null;
+  }, [activeRoom]);
+
   useEffect(() => {
     const onVisibility = () => {
       if (document.visibilityState === "visible" && activeRoom !== null) {

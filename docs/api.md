@@ -113,16 +113,19 @@ per-room `unread_count`, and a `last_message` preview.
 }
 ```
 
-- `unread_count`: the caller's messages newer than their read cursor — `0` for a
-  fresh room, room a member never opened reveals everything as unread.
-- `last_message`: the newest message in the room (any author), or `null` when
-  the room is empty. Present for non-member rooms too, so the list previews
-  rooms before joining.
+- `unread_count`: the caller's unread total — messages **from other users**
+  newer than the caller's read cursor. `0` for a fresh room and for non-members;
+  a member who never opened the room sees everything as unread.
+- `last_message`: the newest message in the room, or `null` when the room is
+  empty. Present **only for member rooms** — non-members get `null`, so the
+  list previews rooms only after joining (message bodies and unread counts are
+  member-gated, matching history access).
 
 ### `GET /api/rooms/{id}`
 
-One room; `200` with the room object (same shape as above), `404` for an unknown
-id. No membership required to *see* a room.
+One room; `200` with the room object (same shape as above, including the
+member-gated `unread_count` / `last_message`), `404` for an unknown id. No
+membership required to *see* a room, but non-members see no preview.
 
 ### `POST /api/rooms/{id}/join`
 
@@ -152,8 +155,8 @@ Request (either form):
 
 - With `message_id`: mark everything up to (and including) that message read.
   The message must exist **in this room**, else `400`.
-- Empty body / `null`: mark everything read (the cursor becomes the newest
-  message). A room with no messages is a no-op.
+- `{}` or `{ "message_id": null }`: mark everything read (the cursor becomes the
+  newest message). A room with no messages is a no-op.
 
 Response `200`:
 
@@ -165,9 +168,9 @@ Response `200`:
 }
 ```
 
-`last_read_message_id` is `null` when the room has no messages (nothing to
-mark); `unread_count` is the caller's remaining unread total after the cursor
-moved.
+`last_read_message_id` is `null` when the cursor did not move — an empty room,
+or a late/duplicate/out-of-order mark that cannot move the cursor backwards.
+`unread_count` is the caller's remaining unread total after the cursor moved.
 
 | Status | Meaning |
 |--------|---------|
@@ -334,11 +337,11 @@ Semantics:
   timeout do it.
 - **Read receipts are ephemeral**: `POST /api/rooms/{id}/read` persists the
   caller's cursor (the source of truth for unread counts) and broadcasts a
-  `read` frame (`message_id` = the new cursor) so room members can show who has
-  seen a message. The receipt is best-effort: a member with no open connections
-  simply misses it, and clients should ignore a `read` frame whose `user.id` is
-  their own. There is no client → server read frame; marking read is always the
-  HTTP endpoint.
+  `read` frame (`message_id` = the new cursor, only when the cursor actually
+  advanced) so room members can show who has seen a message. The receipt is
+  best-effort: a member with no open connections simply misses it, and clients
+  should ignore a `read` frame whose `user.id` is their own. There is no
+  client → server read frame; marking read is always the HTTP endpoint.
 - Events are broadcast room-wide only; room A clients never see room B's
   traffic. There is no history replay on connect — fetch
   `GET /api/rooms/{id}/messages` after upgrading if needed.

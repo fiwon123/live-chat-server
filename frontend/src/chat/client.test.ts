@@ -68,15 +68,15 @@ describe("syncFromRooms", () => {
       { id: "a", unread_count: 5 },
       { id: "b", unread_count: 0 },
     ]);
-    expect(map.a).toBe(5);
+    expect(map).toEqual({ a: 5 });
   });
 
-  it("keeps a local bump when the server list predates it", () => {
+  it("clears a stale local bump when the server reports the room read", () => {
     const map = syncFromRooms({ b: 9 }, [
       { id: "a", unread_count: 0 },
       { id: "b", unread_count: 0 },
     ]);
-    expect(map.b).toBe(9);
+    expect(map.b).toBeUndefined();
   });
 
   it("clears a room when both sides agree it is read", () => {

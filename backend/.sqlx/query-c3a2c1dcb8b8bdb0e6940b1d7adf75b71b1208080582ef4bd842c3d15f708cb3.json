@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT count(m.id) AS \"count!\"\n               FROM messages m\n               LEFT JOIN message_reads mr\n                      ON mr.room_id = m.room_id AND mr.user_id = $2\n               LEFT JOIN messages c ON c.id = mr.last_read_message_id\n               WHERE m.room_id = $1\n                 AND m.user_id <> $2\n                 AND (\n                     mr.last_read_message_id IS NULL\n                     OR (m.created_at, m.id) > (c.created_at, c.id)\n                 )",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c3a2c1dcb8b8bdb0e6940b1d7adf75b71b1208080582ef4bd842c3d15f708cb3"
+}

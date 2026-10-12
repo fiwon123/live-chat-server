@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO message_reads (room_id, user_id, last_read_message_id)\n               SELECT $1, $2, $3\n               WHERE NOT EXISTS (\n                   SELECT 1\n                   FROM message_reads mr\n                   JOIN messages new ON new.id = $3\n                   JOIN messages old ON old.id = mr.last_read_message_id\n                   WHERE mr.room_id = $1\n                     AND mr.user_id = $2\n                     AND (new.created_at, new.id) <= (old.created_at, old.id)\n               )\n               ON CONFLICT (room_id, user_id) DO UPDATE\n               SET last_read_message_id = EXCLUDED.last_read_message_id,\n                   updated_at = now()\n               WHERE message_reads.last_read_message_id IS NULL\n                  OR (SELECT (created_at, id) FROM messages mnew WHERE mnew.id = EXCLUDED.last_read_message_id)\n                     > (SELECT (created_at, id) FROM messages mold WHERE mold.id = message_reads.last_read_message_id)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1fd03a902d09bb4e4fcf15a52ac08e18820aa48842bae5a749ffc164c439348f"
+}

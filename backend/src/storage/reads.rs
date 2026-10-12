@@ -3,7 +3,8 @@
 //! A cursor is a message id (or `NULL` when the member has never read the
 //! room). Unread counts compare against `(created_at, id)` so ties on the
 //! millisecond never reorder history. Marking read only ever moves the cursor
-//! forward — an out-of-order call cannot un-read messages.
+//! forward — an out-of-order or concurrent call cannot un-read messages.
+//! A member's own messages are never counted as unread.
 
 use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
@@ -28,16 +29,21 @@ impl Reads {
 
     /// Advance the member's read cursor to `message_id`, never backwards.
     ///
-    /// The `WHERE NOT EXISTS` guard rejects the insert when the stored cursor
-    /// already sits at or after the target, so a late/duplicate call is a
-    /// no-op. A missing row (or a `NULL` cursor) always writes.
+    /// Returns `Ok(Some(id))` when the cursor moved to `message_id`
+    /// (first read of the room counts as a move); `Ok(None)` when the guard
+    /// kept the existing cursor — a late, duplicate, or out-of-order call.
+    ///
+    /// The `WHERE NOT EXISTS` guard blocks a new row when the stored cursor
+    /// already sits at or after the target, and the `DO UPDATE ... WHERE`
+    /// re-check repeats the same condition on the conflicting row so two
+    /// concurrent out-of-order marks cannot let the later-finishing write win.
     pub async fn mark_read(
         &self,
         room_id: Uuid,
         user_id: Uuid,
         message_id: Uuid,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query!(
+    ) -> Result<Option<Uuid>, sqlx::Error> {
+        let result = sqlx::query!(
             r#"INSERT INTO message_reads (room_id, user_id, last_read_message_id)
                SELECT $1, $2, $3
                WHERE NOT EXISTS (
@@ -51,20 +57,24 @@ impl Reads {
                )
                ON CONFLICT (room_id, user_id) DO UPDATE
                SET last_read_message_id = EXCLUDED.last_read_message_id,
-                   updated_at = now()"#,
+                   updated_at = now()
+               WHERE message_reads.last_read_message_id IS NULL
+                  OR (SELECT (created_at, id) FROM messages mnew WHERE mnew.id = EXCLUDED.last_read_message_id)
+                     > (SELECT (created_at, id) FROM messages mold WHERE mold.id = message_reads.last_read_message_id)"#,
             room_id,
             user_id,
             message_id
         )
         .execute(&self.pool)
         .await?;
-        Ok(())
+        Ok((result.rows_affected() > 0).then_some(message_id))
     }
 
     /// Unread totals for every room `user_id` is a member of, keyed by room.
     ///
     /// Only member rooms appear; rooms with nothing new (or no membership) are
-    /// simply absent, so callers default them to zero.
+    /// simply absent, so callers default them to zero. The member's own
+    /// messages never count as unread.
     pub async fn unread_counts(&self, user_id: Uuid) -> Result<Vec<RoomUnread>, sqlx::Error> {
         sqlx::query_as!(
             RoomUnread,
@@ -79,6 +89,7 @@ impl Reads {
                       ON mr.room_id = rm.room_id AND mr.user_id = rm.user_id
                LEFT JOIN messages c ON c.id = mr.last_read_message_id
                WHERE rm.user_id = $1
+                 AND (m.user_id IS NULL OR m.user_id <> rm.user_id)
                GROUP BY rm.room_id"#,
             user_id
         )
@@ -87,6 +98,8 @@ impl Reads {
     }
 
     /// Unread total for a single room and member (`0` when unknown/no cursor).
+    ///
+    /// The member's own messages never count as unread.
     pub async fn unread_count(&self, room_id: Uuid, user_id: Uuid) -> Result<i64, sqlx::Error> {
         sqlx::query_scalar!(
             r#"SELECT count(m.id) AS "count!"
@@ -95,6 +108,7 @@ impl Reads {
                       ON mr.room_id = m.room_id AND mr.user_id = $2
                LEFT JOIN messages c ON c.id = mr.last_read_message_id
                WHERE m.room_id = $1
+                 AND m.user_id <> $2
                  AND (
                      mr.last_read_message_id IS NULL
                      OR (m.created_at, m.id) > (c.created_at, c.id)

@@ -102,16 +102,29 @@ impl RoomService {
 
         Ok(rooms
             .into_iter()
-            .map(|room| RoomSummary {
-                unread_count: unread.remove(&room.id).unwrap_or(0),
-                last_message: latest.remove(&room.id),
-                room,
+            .map(|room| {
+                // Membership gates both the unread badge and the last-message
+                // preview: a non-member sees neither.
+                let (unread_count, last_message) = if room.member {
+                    (
+                        unread.remove(&room.id).unwrap_or(0),
+                        latest.remove(&room.id),
+                    )
+                } else {
+                    (0, None)
+                };
+                RoomSummary {
+                    unread_count,
+                    last_message,
+                    room,
+                }
             })
             .collect())
     }
 
     /// A single room plus the caller's membership, unread total, and latest
-    /// message; `404` when unknown. No membership is required to view a room.
+    /// message; `404` when unknown. No membership is required to view a room,
+    /// but non-members see neither the unread badge nor the last message.
     pub async fn get(&self, room_id: Uuid, user_id: Uuid) -> Result<RoomSummary, AppError> {
         let room = self
             .rooms
@@ -119,8 +132,14 @@ impl RoomService {
             .await?
             .ok_or_else(|| AppError::NotFound("room not found".to_string()))?;
         let member = self.memberships.is_member(room_id, user_id).await?;
-        let unread_count = self.reads.unread_count(room_id, user_id).await?;
-        let last_message = self.messages.latest_with_author(room_id).await?;
+        let (unread_count, last_message) = if member {
+            (
+                self.reads.unread_count(room_id, user_id).await?,
+                self.messages.latest_with_author(room_id).await?,
+            )
+        } else {
+            (0, None)
+        };
         Ok(RoomSummary {
             room: RoomWithMembership {
                 id: room.id,
@@ -139,6 +158,10 @@ impl RoomService {
     ///
     /// `403` for non-members, `404` for unknown rooms, `400` when the target
     /// message is not in this room. An empty room persists nothing.
+    ///
+    /// `MarkReadResult::message_id` is the cursor actually stored — `None` when
+    /// a late/duplicate/out-of-order call was a no-op (the cursor never moves
+    /// backwards), so callers only broadcast a receipt on a real advance.
     pub async fn mark_read(
         &self,
         room_id: Uuid,
@@ -170,12 +193,13 @@ impl RoomService {
                 .map(|message| message.id),
         };
 
-        if let Some(id) = target {
-            self.reads.mark_read(room_id, user_id, id).await?;
-        }
+        let effective = match target {
+            Some(id) => self.reads.mark_read(room_id, user_id, id).await?,
+            None => None,
+        };
         let unread_count = self.reads.unread_count(room_id, user_id).await?;
         Ok(MarkReadResult {
-            message_id: target,
+            message_id: effective,
             unread_count,
         })
     }
