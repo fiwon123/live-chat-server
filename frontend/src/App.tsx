@@ -3,8 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "./api/endpoints";
 import { messageOf } from "./api/client";
 import type { Room } from "./api/types";
+import { AuthScreen } from "./components/AuthScreen";
 import { ChatPanel } from "./components/ChatPanel";
-import { LoginForm } from "./components/LoginForm";
 import { Logo } from "./components/Logo";
 import { RoomList } from "./components/RoomList";
 import { useAuth } from "./hooks/useAuth";
@@ -109,13 +109,11 @@ function App() {
 
   if (auth.status !== "authenticated" || auth.user === null) {
     return (
-      <main className="auth">
-        <LoginForm
-          onSubmit={(mode, username, password) => void auth.authenticate(mode, username, password)}
-          busy={auth.busy}
-          error={auth.error}
-        />
-      </main>
+      <AuthScreen
+        onSubmit={(mode, username, password) => void auth.authenticate(mode, username, password)}
+        busy={auth.busy}
+        error={auth.error}
+      />
     );
   }
 
