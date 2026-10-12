@@ -45,6 +45,43 @@ Set `VITE_API_BASE` to call an absolute API base instead of the proxied `/api`.
 - **Format**: Oxfmt — do not add Prettier
 - **Lint**: Oxlint — do not add ESLint
 
+## Screenshots
+
+The Playwright harness (`scripts/screenshots.mjs`) seeds a two-user room over
+the public API + WebSocket — messages, reactions, and a read receipt — then
+captures the key screens as PNGs for visual review:
+
+- `01-auth-dark.png` / `02-auth-light.png` — login
+- `03-rooms-dark.png` — room list with unread badge
+- `04-chat-dark.png` / `06-chat-light.png` — live chat
+- `05-chat-seen-dark.png` — "Seen by bob" receipt
+
+It is **not** part of `make check` and CI never runs it.
+
+It needs a running stack plus one-time browser install:
+
+```bash
+npm ci
+npx playwright install chromium     # one-time; on Linux use --with-deps
+make dev-up                          # or: backend cargo run + npm run dev
+make screenshots                     # PNGs land in frontend/screenshots/
+```
+
+On Linux the browser usually needs system libraries before it will launch; if
+it fails, run `npx playwright install --with-deps chromium` so the missing
+packages are installed (requires sudo). On macOS/Windows the plain install
+above is enough.
+
+Override where the browser points (default `http://localhost:5173`, the Vite
+origin — `/api` and `/health` are proxied) or where PNGs land:
+
+```bash
+VITE_ORIGIN=http://localhost:5173 SCREENSHOTS_DIR=/tmp/shots make screenshots
+```
+
+Capture settings (viewport, origin) mirror `playwright.config.ts`, which also
+exists for future `e2e/` Playwright tests.
+
 ## API
 
 The backend HTTP + WebSocket API is documented in
