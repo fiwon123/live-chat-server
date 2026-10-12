@@ -34,7 +34,7 @@ storage, and broadcasting.
 - Serialization: Serde
 - Frontend: React + TypeScript (Vite), Oxlint + Oxfmt, npm
 - Development: Docker Compose (optional) + `mise` toolchain pins
-- Later: Redis Pub/Sub for multi-instance broadcasting
+- Optional: Redis Pub/Sub for multi-instance broadcasting (enabled via `REDIS_URL`; otherwise in-memory)
 
 ### Core Architecture
 
@@ -143,7 +143,7 @@ The agent runs at the workspace root. Docker is not available inside the sandbox
 - **Save before broadcast**: persist each message to PostgreSQL before broadcasting over WebSockets
 - **Consistent identity**: messages carry IDs and timestamps so clients display them consistently after reconnects; use `timestamptz` and stable ordering
 - **Message validation**: enforce message-size limits, input validation, and room-access checks on every action
-- **Single-server first**: room connections and broadcast channels stay in-memory; Redis Pub/Sub only for multi-instance (later)
+- **Single-server first**: room connections and broadcast channels stay in-memory; Redis Pub/Sub provides cross-instance fan-out when `REDIS_URL` is set (fall back to in-memory with a warning if Redis is unreachable)
 - **Tracing**: use `tracing` for structured logs (connect/disconnect/errors/broadcasts)
 - **sqlx offline cache**: `.sqlx/` must NOT be gitignored; use `SQLX_OFFLINE=true` where needed
 - **Lockfile discipline**: all cargo commands use `--locked` in CI

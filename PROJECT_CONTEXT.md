@@ -34,7 +34,7 @@ storage, and broadcasting. A React + TypeScript frontend provides the UI.
 - **Serialization**: Serde
 - **Frontend**: React + TypeScript (Vite), Oxlint + Oxfmt, npm
 - **Dev environment**: Docker Compose + `mise` toolchain pins
-- **Later**: Redis Pub/Sub for multi-instance broadcasting (commented/optional)
+- **Optional**: Redis Pub/Sub for multi-instance broadcasting (enabled via `REDIS_URL`; otherwise in-memory)
 
 ## Topology
 
@@ -79,8 +79,8 @@ frontend/   # React + TypeScript client (Vite): pages, components, API/WS client
   component with its toolchain but missing dependencies fails with instructions
   (`npm ci`, `cargo fetch`) rather than passing.
 - Single-server instance to start: live room connections and broadcast channels
-  stay in memory. Redis Pub/Sub is only for multi-instance; the compose Redis
-  block is left commented/optional.
+  stay in memory. Redis Pub/Sub is only for multi-instance; enable it by setting
+  `REDIS_URL` (the compose redis service is present but unused until then).
 - WebSockets: save each message to PostgreSQL **before broadcasting** it;
   messages must carry IDs and timestamps so clients display them consistently
   across reconnects.
