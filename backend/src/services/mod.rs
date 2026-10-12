@@ -4,4 +4,4 @@ pub mod auth;
 pub mod rooms;
 
 pub use auth::AuthService;
-pub use rooms::RoomService;
+pub use rooms::{MarkReadResult, RoomService, RoomSummary};

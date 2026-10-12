@@ -40,6 +40,9 @@ Thumbs.db
 build/
 *.tar.gz
 
+# Playwright screenshots (generated, never committed)
+frontend/screenshots/
+
 # Docker
 docker-compose.override.yml
 

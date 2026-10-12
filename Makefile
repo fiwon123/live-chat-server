@@ -2,7 +2,7 @@
 
 COMPONENTS := backend frontend
 
-.PHONY: help check clean dev-up dev-down dev-shell dev-opencode dev-opencode-auto dev-log dev-build reset preflight
+.PHONY: help check clean dev-up dev-down dev-shell dev-opencode dev-opencode-auto dev-log dev-build reset preflight screenshots
 
 OPENCODE_ARGS ?=
 
@@ -29,6 +29,9 @@ preflight:
 	@test -x "$(HOME)/.opencode/bin/opencode" || { echo "ERROR: opencode not found at ~/.opencode/bin/opencode" >&2; exit 1; }
 	@mkdir -p "$(HOME)/.config/opencode" "$(HOME)/.config/gh" && touch "$(HOME)/.gitconfig"
 	@scripts/resolve-gh-token.sh --check >/dev/null 2>&1 || true
+
+screenshots: ## Capture UI screenshots for visual review (needs dev servers)
+	$(MAKE) -C frontend screenshots
 
 dev-up: preflight
 	@HOST_UID=$$(id -u) HOST_GID=$$(id -g) GH_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) GITHUB_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) docker compose up -d --build

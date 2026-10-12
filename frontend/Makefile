@@ -8,7 +8,7 @@
 # gate itself stays deterministic and offline. A missing toolchain is skipped
 # (like the backend); missing dependencies fail loudly with instructions.
 
-.PHONY: check install format lint typecheck build
+.PHONY: check install format lint typecheck build screenshots
 
 check: ## format check + lint + typecheck + build (the gate)
 	@if ! command -v npm >/dev/null 2>&1; then \
@@ -38,3 +38,13 @@ typecheck: ## Type-check only (tsc -b)
 
 build: ## Production build
 	npm run build
+
+screenshots: ## Capture UI screenshots for visual review (needs dev servers)
+	@if ! command -v npm >/dev/null 2>&1; then \
+		echo "npm not found; skipping screenshots"; \
+	elif [ ! -d node_modules ]; then \
+		echo "ERROR: frontend dependencies not installed -- run 'npm ci' in frontend/" >&2; \
+		exit 1; \
+	else \
+		npm run screenshots; \
+	fi
