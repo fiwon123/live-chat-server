@@ -177,6 +177,23 @@
   color: var(--accent);
 }
 
+.rooms__more {
+  align-self: flex-start;
+  margin-top: 0.1rem;
+  padding: 0.3rem 0.5rem;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: color var(--dur) var(--ease);
+}
+
+.rooms__more:hover {
+  color: var(--accent);
+}
+
 .rooms__main {
   flex: 1;
   min-width: 0;

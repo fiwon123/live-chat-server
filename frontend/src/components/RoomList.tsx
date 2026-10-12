@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent, type RefObject } from "react";
 
 import type { Room } from "../api/types";
+import { VISIBLE_ROOMS, selectRooms } from "../chat/rooms";
 import { Icon } from "./Icon";
 
 export interface RoomListProps {
@@ -27,14 +28,14 @@ export function RoomList({
   const [name, setName] = useState("");
   const [filter, setFilter] = useState("");
   const [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const query = filter.trim().toLowerCase();
-  const filtered = useMemo(() => {
-    if (query.length === 0) {
-      return rooms;
-    }
-    return rooms.filter((room) => room.name.toLowerCase().includes(query));
-  }, [rooms, query]);
+
+  const { visible, hiddenCount, total } = useMemo(
+    () => selectRooms(rooms, unread, query, expanded),
+    [rooms, unread, query, expanded],
+  );
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -119,12 +120,12 @@ export function RoomList({
         </div>
       )}
 
-      {!loading && rooms.length > 0 && filtered.length === 0 && (
+      {!loading && rooms.length > 0 && total === 0 && (
         <p className="muted rooms__none">No rooms match “{query}”.</p>
       )}
 
       <ul className="rooms__list">
-        {filtered.map((room) => {
+        {visible.map((room) => {
           const count = unread[room.id] ?? 0;
           return (
             <li key={room.id}>
@@ -157,6 +158,16 @@ export function RoomList({
           );
         })}
       </ul>
+
+      {total > VISIBLE_ROOMS && (
+        <button
+          type="button"
+          className="rooms__more"
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? "Show fewer" : `Show ${hiddenCount} more`}
+        </button>
+      )}
     </aside>
   );
 }
