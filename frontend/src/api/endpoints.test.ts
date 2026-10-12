@@ -127,4 +127,65 @@ describe("api", () => {
     const [, init] = fetchMock.mock.calls[0];
     expect(JSON.parse(String(init?.body))).toEqual({ message_id: "msg-9" });
   });
+
+  it("listRooms normalizes payloads missing last_message", async () => {
+    // A pre-#45 backend omits `last_message` (and possibly `unread_count`);
+    // listRooms must degrade them, not pass `undefined` through to components.
+    mockFetch(
+      new Response(
+        JSON.stringify([
+          { id: "r1", name: "general", created_by: "u1", created_at: "x", member: true },
+        ]),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const rooms = await api.listRooms("jwt");
+    expect(rooms).toHaveLength(1);
+    expect(rooms[0].last_message).toBeNull();
+    expect(rooms[0].unread_count).toBe(0);
+  });
+
+  it("history normalizes messages missing reactions", async () => {
+    // A pre-#44 backend omits `reactions`; history must default it to [].
+    mockFetch(
+      new Response(
+        JSON.stringify([
+          {
+            id: "m1",
+            room_id: "r1",
+            user_id: "u1",
+            username: "alice",
+            body: "hi",
+            created_at: "x",
+          },
+        ]),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const history = await api.history("jwt", "r1");
+    expect(history[0].reactions).toEqual([]);
+  });
+
+  it("createRoom normalizes payloads missing last_message", async () => {
+    // The created room goes straight into App state; older backends omit the
+    // post-#45 fields here too, so the response is normalized as well.
+    mockFetch(
+      new Response(
+        JSON.stringify({
+          id: "r1",
+          name: "general",
+          created_by: "u1",
+          created_at: "x",
+          member: true,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const room = await api.createRoom("jwt", "general");
+    expect(room.last_message).toBeNull();
+    expect(room.unread_count).toBe(0);
+  });
 });

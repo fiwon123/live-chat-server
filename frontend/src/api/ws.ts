@@ -1,10 +1,11 @@
-// WebSocket URL building + client frame encoding.
+// WebSocket URL building + frame encoding/decoding.
 //
 // Browsers cannot set an `Authorization` header on a WebSocket, so the JWT
 // travels as a query parameter (docs/api.md → "Real-time chat").
 
 import { API_BASE } from "./client";
-import type { ClientSend } from "./types";
+import { normalizeMessage } from "./normalize";
+import type { ClientSend, ServerEvent } from "./types";
 
 /** Pure URL builder (exported for tests); `origin` is the page origin. */
 export function resolveWsUrl(
@@ -41,4 +42,15 @@ export function encodeTyping(): string {
 export function encodeReact(messageId: string, emoji: string): string {
   const frame: ClientSend = { type: "react", message_id: messageId, emoji };
   return JSON.stringify(frame);
+}
+
+/**
+ * Decode a server frame. Throws on malformed JSON (callers ignore the frame).
+ * A `message` frame is normalized here — the WS trust boundary — so older
+ * backends' omitted fields (`reactions`, #44) never reach state as
+ * `undefined`.
+ */
+export function decodeServerEvent(raw: string): ServerEvent {
+  const event = JSON.parse(raw) as ServerEvent;
+  return event.type === "message" ? { ...event, message: normalizeMessage(event.message) } : event;
 }

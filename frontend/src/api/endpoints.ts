@@ -1,7 +1,13 @@
 // Typed wrappers around every endpoint in docs/api.md.
 
 import { request } from "./client";
-import type { AuthResponse, Message, ReadReceipt, Room, User } from "./types";
+import {
+  normalizeMessage,
+  normalizeRoom,
+  type MessagePayload,
+  type RoomPayload,
+} from "./normalize";
+import type { AuthResponse, ReadReceipt, User } from "./types";
 
 /** Build the history path, including optional `limit` / `before` query params. */
 export function historyPath(
@@ -39,11 +45,13 @@ export const api = {
   },
 
   listRooms(token: string) {
-    return request<Room[]>("/rooms", { token });
+    return request<RoomPayload[]>("/rooms", { token }).then((rooms) => rooms.map(normalizeRoom));
   },
 
   createRoom(token: string, name: string) {
-    return request<Room>("/rooms", { method: "POST", token, body: { name } });
+    return request<RoomPayload>("/rooms", { method: "POST", token, body: { name } }).then(
+      normalizeRoom,
+    );
   },
 
   joinRoom(token: string, roomId: string) {
@@ -55,7 +63,9 @@ export const api = {
   },
 
   history(token: string, roomId: string, options: { limit?: number; before?: string | null } = {}) {
-    return request<Message[]>(historyPath(roomId, options), { token });
+    return request<MessagePayload[]>(historyPath(roomId, options), { token }).then((page) =>
+      page.map(normalizeMessage),
+    );
   },
 
   /**

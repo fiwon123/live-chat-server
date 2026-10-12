@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { encodeReact, encodeSend, encodeTyping, resolveWsUrl } from "./ws";
+import { decodeServerEvent, encodeReact, encodeSend, encodeTyping, resolveWsUrl } from "./ws";
 
 describe("resolveWsUrl", () => {
   it("builds a ws URL with token and room_id query params", () => {
@@ -37,5 +37,62 @@ describe("frame encoding", () => {
       message_id: "m1",
       emoji: "👍",
     });
+  });
+});
+
+describe("decodeServerEvent", () => {
+  it("defaults a message frame's missing reactions to []", () => {
+    // Pre-#44 backends omit `reactions` from `message` frames entirely;
+    // the ChatPanel reads `message.reactions.length` and would crash.
+    const raw = JSON.stringify({
+      type: "message",
+      message: {
+        id: "m1",
+        room_id: "r1",
+        user_id: "u1",
+        username: "alice",
+        body: "hi",
+        created_at: "2026-01-01T00:00:00Z",
+      },
+    });
+
+    const event = decodeServerEvent(raw);
+    expect(event.type).toBe("message");
+    if (event.type === "message") {
+      expect(event.message.reactions).toEqual([]);
+    }
+  });
+
+  it("keeps existing reactions on a message frame", () => {
+    const reactions = [{ emoji: "👍", count: 1, user_ids: ["u1"] }];
+    const raw = JSON.stringify({
+      type: "message",
+      message: {
+        id: "m1",
+        room_id: "r1",
+        user_id: "u1",
+        username: "alice",
+        body: "hi",
+        created_at: "2026-01-01T00:00:00Z",
+        reactions,
+      },
+    });
+
+    const event = decodeServerEvent(raw);
+    if (event.type === "message") {
+      expect(event.message.reactions).toEqual(reactions);
+    }
+  });
+
+  it("passes non-message frames through untouched", () => {
+    const raw = JSON.stringify({ type: "typing", user: { id: "u1", username: "alice" } });
+    expect(decodeServerEvent(raw)).toEqual({
+      type: "typing",
+      user: { id: "u1", username: "alice" },
+    });
+  });
+
+  it("throws on malformed JSON so callers can ignore the frame", () => {
+    expect(() => decodeServerEvent("not json")).toThrow();
   });
 });

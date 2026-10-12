@@ -136,7 +136,10 @@ export function RoomList({
                 <Icon name="hash" size={16} className="rooms__hash" />
                 <span className="rooms__main">
                   <span className="rooms__name">{room.name}</span>
-                  {room.last_message !== null && (
+                  {/* `!= null` (not `!== null`) on purpose: a version-skewed
+                      backend (older than the `last_message` field, #45) omits
+                      the key entirely, yielding `undefined`. */}
+                  {room.last_message != null && (
                     <span className="rooms__preview" aria-hidden="true">
                       {room.last_message.username}: {room.last_message.body}
                     </span>
