@@ -5,10 +5,14 @@ import { messageOf } from "./api/client";
 import type { Room } from "./api/types";
 import { ChatPanel } from "./components/ChatPanel";
 import { LoginForm } from "./components/LoginForm";
+import { Logo } from "./components/Logo";
 import { RoomList } from "./components/RoomList";
 import { useAuth } from "./hooks/useAuth";
 import { useChatRoom } from "./hooks/useChatRoom";
-import "./App.css";
+import "./styles/primitives.css";
+import "./styles/auth.css";
+import "./styles/shell.css";
+import "./styles/chat.css";
 
 function App() {
   const auth = useAuth();
@@ -95,7 +99,11 @@ function App() {
   }, [token, activeRoom, refreshRooms]);
 
   if (auth.status === "loading") {
-    return <div className="splash">Loading…</div>;
+    return (
+      <div className="splash">
+        <Logo size={34} />
+      </div>
+    );
   }
 
   if (auth.status !== "authenticated" || auth.user === null) {
@@ -113,7 +121,7 @@ function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <strong>live-chat</strong>
+        <Logo withWordmark size={24} />
         <span className="who">{auth.user.username}</span>
         <button type="button" onClick={auth.logout}>
           Log out

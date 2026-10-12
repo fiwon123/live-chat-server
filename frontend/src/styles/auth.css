@@ -1,0 +1,71 @@
+/* ----- Auth ----- */
+
+.auth {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.login {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-2);
+}
+
+.login h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+}
+
+.login .tabs {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.login .tabs button {
+  flex: 1;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.5rem;
+  cursor: pointer;
+}
+
+.login .tabs button.active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-softer);
+}
+
+.login label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.login button[type="submit"] {
+  background: var(--accent-gradient);
+  color: var(--accent-contrast);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.login button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -1,0 +1,164 @@
+/* ----- Chat ----- */
+
+.chat {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat.empty {
+  align-items: center;
+  justify-content: center;
+}
+
+.chat header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 1rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.chat header > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.chat header h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.status {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.status-open {
+  color: var(--good);
+}
+
+.status-connecting,
+.status-closed {
+  color: var(--warn);
+}
+
+.status-error {
+  color: var(--bad);
+}
+
+.online {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.online .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--good);
+  display: inline-block;
+}
+
+.chat header .leave {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+
+.chat header .leave:hover {
+  color: var(--text);
+}
+
+.feed {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 1rem;
+}
+
+.feed .older {
+  align-self: center;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+
+.message {
+  max-width: 70%;
+  align-self: flex-start;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.45rem 0.7rem;
+}
+
+.message.own {
+  align-self: flex-end;
+  background: var(--accent-soft);
+  border-color: rgba(45, 212, 191, 0.22);
+}
+
+.message .meta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.15rem;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.message .author {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.message p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.composer {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.7rem 1rem;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+
+.composer textarea {
+  flex: 1;
+  resize: none;
+}
+
+.composer button {
+  background: var(--accent-gradient);
+  color: var(--accent-contrast);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.composer button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
