@@ -164,8 +164,9 @@ async function newContext(browser, theme) {
   const context = await browser.newContext({
     viewport: VIEWPORT,
     colorScheme: theme,
-    permissions: [{ origin: ORIGIN, permission: "notifications" }],
   });
+  // Scope the granted permission to the app origin (the API is proxied there).
+  await context.grantPermissions(["notifications"], { origin: ORIGIN });
   if (theme === "light") {
     await context.addInitScript(() => {
       localStorage.setItem("livechat.theme", "light");
