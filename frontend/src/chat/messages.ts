@@ -3,7 +3,7 @@
 // Live frames and history must agree: every message carries an `id` and a
 // `created_at`, so merging is dedupe-by-id + stable chronological ordering.
 
-import type { Message } from "../api/types";
+import type { Message, PresenceUser } from "../api/types";
 
 /**
  * Chronological order, oldest first. `created_at` is RFC 3339 with variable
@@ -86,4 +86,21 @@ export function formatDayLabel(iso: string): string {
     return "Yesterday";
   }
   return date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+}
+
+/**
+ * One-line description of who is typing, or `null` when nobody is.
+ * 1 → "alice is typing…", 2 → "alice and bob are typing…", 3+ → collapsed.
+ */
+export function typingLabel(users: PresenceUser[]): string | null {
+  if (users.length === 0) {
+    return null;
+  }
+  if (users.length === 1) {
+    return `${users[0].username} is typing…`;
+  }
+  if (users.length === 2) {
+    return `${users[0].username} and ${users[1].username} are typing…`;
+  }
+  return "Several people are typing…";
 }

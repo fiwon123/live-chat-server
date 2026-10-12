@@ -266,11 +266,13 @@ function App() {
             currentUserId={auth.user.id}
             messages={chat.messages}
             online={chat.online}
+            typing={chat.typing}
             status={chat.status}
             error={chat.error}
             hasMore={chat.hasMore}
             loadingOlder={chat.loadingOlder}
             onSend={chat.send}
+            onTyping={chat.sendTyping}
             onLoadOlder={chat.loadOlder}
             onLeave={() => void leaveRoom()}
           />

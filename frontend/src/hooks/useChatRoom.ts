@@ -5,23 +5,29 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { messageOf } from "../api/client";
 import { api } from "../api/endpoints";
 import type { Message, PresenceUser, ServerEvent } from "../api/types";
-import { encodeSend, wsUrl } from "../api/ws";
+import { encodeSend, encodeTyping, wsUrl } from "../api/ws";
 import { mergeMessages } from "../chat/messages";
 
 export const HISTORY_PAGE_SIZE = 50;
 const BASE_RECONNECT_DELAY_MS = 500;
 const MAX_RECONNECT_DELAY_MS = 8000;
+/** How long a received `typing` event keeps a user listed before it expires. */
+export const TYPING_TTL_MS = 3500;
+/** Client-side cap on how often we emit `typing` while the user types. */
+export const TYPING_SEND_INTERVAL_MS = 1500;
 
 export type ConnectionStatus = "idle" | "connecting" | "open" | "closed" | "error";
 
 export interface ChatRoom {
   messages: Message[];
   online: PresenceUser[];
+  typing: PresenceUser[];
   status: ConnectionStatus;
   error: string | null;
   hasMore: boolean;
   loadingOlder: boolean;
   send: (body: string) => boolean;
+  sendTyping: () => void;
   loadOlder: () => void;
 }
 
@@ -32,6 +38,7 @@ export interface ChatRoom {
 export function useChatRoom(token: string, roomId: string): ChatRoom {
   const [messages, setMessages] = useState<Message[]>([]);
   const [online, setOnline] = useState<Record<string, PresenceUser>>({});
+  const [typing, setTyping] = useState<Record<string, PresenceUser>>({});
   const [status, setStatus] = useState<ConnectionStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -39,8 +46,21 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
 
   const socketRef = useRef<WebSocket | null>(null);
   const oldestRef = useRef<string | null>(null);
+  const typingTimersRef = useRef(new Map<string, number>());
+  const typingSentAtRef = useRef(0);
 
   const active = token.length > 0 && roomId.length > 0;
+
+  /** Drop every pending typing timer and clear the indicator. */
+  const clearTyping = useCallback(() => {
+    for (const timer of typingTimersRef.current.values()) {
+      window.clearTimeout(timer);
+    }
+    typingTimersRef.current.clear();
+    // A new room deserves an immediate typing frame, not the old room's gap.
+    typingSentAtRef.current = 0;
+    setTyping({});
+  }, []);
 
   useEffect(() => {
     oldestRef.current = messages.length > 0 ? messages[0].id : null;
@@ -50,6 +70,7 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
   useEffect(() => {
     setMessages([]);
     setOnline({});
+    clearTyping();
     setError(null);
     setHasMore(false);
     if (!active) {
@@ -74,7 +95,7 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
     return () => {
       cancelled = true;
     };
-  }, [active, token, roomId]);
+  }, [active, token, roomId, clearTyping]);
 
   // Live connection.
   useEffect(() => {
@@ -85,9 +106,28 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
     let attempt = 0;
     let reconnectTimer: number | undefined;
 
+    const dropTyping = (userId: string) => {
+      const timers = typingTimersRef.current;
+      const timer = timers.get(userId);
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+        timers.delete(userId);
+      }
+      setTyping((prev) => {
+        if (!(userId in prev)) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+    };
+
     const handle = (event: ServerEvent) => {
       if (event.type === "message") {
         setMessages((prev) => mergeMessages(prev, event.message));
+        // Sending ends typing immediately — no need for the TTL to expire it.
+        dropTyping(event.message.user_id);
       } else if (event.type === "presence") {
         setOnline((prev) => {
           const next = { ...prev };
@@ -98,6 +138,31 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
           }
           return next;
         });
+        if (event.event === "left") {
+          dropTyping(event.user.id);
+        }
+      } else if (event.type === "typing") {
+        const { user } = event;
+        setTyping((prev) => ({ ...prev, [user.id]: user }));
+        const timers = typingTimersRef.current;
+        const existing = timers.get(user.id);
+        if (existing !== undefined) {
+          window.clearTimeout(existing);
+        }
+        timers.set(
+          user.id,
+          window.setTimeout(() => {
+            timers.delete(user.id);
+            setTyping((prev) => {
+              if (!(user.id in prev)) {
+                return prev;
+              }
+              const next = { ...prev };
+              delete next[user.id];
+              return next;
+            });
+          }, TYPING_TTL_MS),
+        );
       } else {
         setError(event.message);
       }
@@ -116,7 +181,7 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
         setStatus("open");
       };
       socket.onmessage = (event) => {
-        if (typeof event.data !== "string") {
+        if (cancelled || typeof event.data !== "string") {
           return;
         }
         try {
@@ -151,8 +216,9 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
       const socket = socketRef.current;
       socketRef.current = null;
       socket?.close();
+      clearTyping();
     };
-  }, [active, token, roomId]);
+  }, [active, token, roomId, clearTyping]);
 
   const send = useCallback((body: string): boolean => {
     const socket = socketRef.current;
@@ -162,6 +228,20 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
     }
     socket.send(encodeSend(body));
     return true;
+  }, []);
+
+  /** Emit a `typing` frame, at most once per `TYPING_SEND_INTERVAL_MS`. */
+  const sendTyping = useCallback(() => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    const now = Date.now();
+    if (now - typingSentAtRef.current < TYPING_SEND_INTERVAL_MS) {
+      return;
+    }
+    typingSentAtRef.current = now;
+    socket.send(encodeTyping());
   }, []);
 
   const loadOlder = useCallback(() => {
@@ -185,5 +265,21 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
     [online],
   );
 
-  return { messages, online: onlineList, status, error, hasMore, loadingOlder, send, loadOlder };
+  const typingList = useMemo(
+    () => Object.values(typing).sort((a, b) => a.username.localeCompare(b.username)),
+    [typing],
+  );
+
+  return {
+    messages,
+    online: onlineList,
+    typing: typingList,
+    status,
+    error,
+    hasMore,
+    loadingOlder,
+    send,
+    sendTyping,
+    loadOlder,
+  };
 }

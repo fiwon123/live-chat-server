@@ -37,10 +37,8 @@ export interface PresenceUser {
 export type ServerEvent =
   | { type: "message"; message: Message }
   | { type: "presence"; event: "joined" | "left"; user: PresenceUser }
+  | { type: "typing"; user: PresenceUser }
   | { type: "error"; message: string };
 
 /** Frames the client sends (see docs/api.md → "Client → server frames"). */
-export interface ClientSend {
-  type: "send";
-  body: string;
-}
+export type ClientSend = { type: "send"; body: string } | { type: "typing" };

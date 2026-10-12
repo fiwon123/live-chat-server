@@ -8,6 +8,8 @@ pub mod registry;
 
 pub use registry::RoomRegistry;
 
+use std::time::{Duration, Instant};
+
 use axum::Error as AxumError;
 use axum::extract::ws::{Message as WsMessage, WebSocket};
 use futures_util::stream::SplitSink;
@@ -25,6 +27,12 @@ use crate::storage::{Messages, RoomMemberships};
 /// Maximum length of a chat message body (in chars, after trimming).
 pub const MAX_MESSAGE_LEN: usize = 4000;
 
+/// Minimum gap between relayed `typing` events from one session. Typing is
+/// ephemeral (never persisted), so a chatty client should not be able to flood
+/// the room channel; the client throttles too, and this is the server's
+/// backstop.
+const TYPING_THROTTLE: Duration = Duration::from_millis(1500);
+
 /// A user reference embedded in presence events.
 #[derive(Debug, Clone, Serialize)]
 pub struct UserRef {
@@ -40,6 +48,8 @@ pub enum WsOutgoing {
     Message { message: MessageResponse },
     /// A user joined or left the room.
     Presence { event: &'static str, user: UserRef },
+    /// A user is composing a message (ephemeral; not persisted).
+    Typing { user: UserRef },
     /// A protocol or validation error; the connection stays open.
     Error { message: String },
 }
@@ -48,7 +58,11 @@ pub enum WsOutgoing {
 #[derive(Debug, serde::Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum Incoming {
-    Send { body: String },
+    Send {
+        body: String,
+    },
+    /// The client is composing. No payload: the server knows the sender.
+    Typing,
 }
 
 /// Everything one connected client needs to handle inbound frames.
@@ -60,6 +74,8 @@ struct SessionCtx {
     memberships: RoomMemberships,
     registry: RoomRegistry,
     direct_tx: mpsc::Sender<WsOutgoing>,
+    /// When this session last relayed a `typing` event (throttle gate).
+    typing_last: Option<Instant>,
 }
 
 /// Run the socket session for one connection: read client frames, persist and
@@ -102,6 +118,10 @@ pub async fn run_session(
                         if send_json(&mut sender, &event).await.is_err() { break; }
                     }
                     Ok(event) => {
+                        // A user does not need their own typing echoed back.
+                        if matches!(&event, WsOutgoing::Typing { user } if user.id == user_id) {
+                            continue;
+                        }
                         if send_json(&mut sender, &event).await.is_err() { break; }
                     }
                     Err(RecvError::Lagged(skipped)) => {
@@ -118,7 +138,7 @@ pub async fn run_session(
 
     let recv_registry = registry.clone();
     let mut recv_task = tokio::spawn(async move {
-        let ctx = SessionCtx {
+        let mut ctx = SessionCtx {
             room_id,
             user_id,
             username: username.clone(),
@@ -126,11 +146,12 @@ pub async fn run_session(
             memberships: RoomMemberships::new(pool),
             registry: recv_registry,
             direct_tx,
+            typing_last: None,
         };
 
         while let Some(Ok(frame)) = receiver.next().await {
             match frame {
-                WsMessage::Text(text) => handle_text(text.as_str(), &ctx).await,
+                WsMessage::Text(text) => handle_text(text.as_str(), &mut ctx).await,
                 WsMessage::Ping(_) | WsMessage::Pong(_) => {}
                 WsMessage::Close(_) => break,
                 _ => {}
@@ -149,15 +170,16 @@ pub async fn run_session(
     tracing::info!(room_id = %room_id, user_id = %user_id, "ws disconnected");
 }
 
-/// Handle one inbound text frame (`{"type": "send", "body": "..."}`).
+/// Handle one inbound text frame: `{"type":"send","body":"..."}` or
+/// `{"type":"typing"}`.
 ///
 /// A failed frame never kills the connection: the client gets an `error`
 /// event and keeps talking. Save happens before broadcast, so every receiver
 /// (including the sender) sees the same id and timestamp.
-async fn handle_text(text: &str, ctx: &SessionCtx) {
+async fn handle_text(text: &str, ctx: &mut SessionCtx) {
     let error = match parse_incoming(text) {
         Err(_) => Some(WsOutgoing::Error {
-            message: "malformed message: expected {\"type\":\"send\",\"body\":\"...\"}".to_string(),
+            message: "malformed message: expected {\"type\":\"send\",\"body\":\"...\"} or {\"type\":\"typing\"}".to_string(),
         }),
         Ok(Incoming::Send { body }) => match validate_body(&body) {
             Err(err) => Some(WsOutgoing::Error {
@@ -204,6 +226,10 @@ async fn handle_text(text: &str, ctx: &SessionCtx) {
                 }
             }
         },
+        Ok(Incoming::Typing) => {
+            handle_typing(ctx).await;
+            None
+        }
     };
 
     if let Some(error) = error {
@@ -213,6 +239,43 @@ async fn handle_text(text: &str, ctx: &SessionCtx) {
             tracing::debug!(room_id = %ctx.room_id, "ws client error lane full; dropping error event");
         }
     }
+}
+
+/// Relay an ephemeral `typing` event to the room, membership-checked and
+/// throttled per session. Never persisted. The gate runs before the membership
+/// query so a client spamming `typing` cannot force a DB round-trip per frame.
+async fn handle_typing(ctx: &mut SessionCtx) {
+    let now = Instant::now();
+    if let Some(last) = ctx.typing_last
+        && now.duration_since(last) < TYPING_THROTTLE
+    {
+        return; // Throttled: silently drop, the room already knows.
+    }
+
+    let member = match ctx.memberships.is_member(ctx.room_id, ctx.user_id).await {
+        Ok(member) => member,
+        Err(err) => {
+            tracing::error!(error = ?err, "membership check failed");
+            return send_error(&ctx.direct_tx, "failed to verify membership").await;
+        }
+    };
+    if !member {
+        return send_error(&ctx.direct_tx, "you are not a member of this room").await;
+    }
+
+    ctx.typing_last = Some(now);
+
+    ctx.registry
+        .send(
+            ctx.room_id,
+            WsOutgoing::Typing {
+                user: UserRef {
+                    id: ctx.user_id,
+                    username: ctx.username.clone(),
+                },
+            },
+        )
+        .await;
 }
 
 async fn send_error(direct_tx: &mpsc::Sender<WsOutgoing>, message: &str) {

@@ -265,6 +265,79 @@ async fn broadcasts_only_within_room_and_persists() {
 }
 
 #[tokio::test]
+async fn typing_broadcasts_within_room_only_and_is_not_persisted() {
+    let Some(server) = spawn_server().await else {
+        return;
+    };
+
+    let (alice_token, alice_name) = register_user(&server.app).await;
+    let (bob_token, bob_name) = register_user(&server.app).await;
+    let (carol_token, _) = register_user(&server.app).await;
+
+    let (room_a, alice_id) = create_room(&server.app, &alice_token, "typing-a").await;
+    let (room_b, _) = create_room(&server.app, &carol_token, "typing-b").await;
+
+    let (status, _) = request(
+        &server.app,
+        "POST",
+        &format!("/api/rooms/{room_a}/join"),
+        None,
+        Some(&bob_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // Drain each client's own `joined` so the streams are clear.
+    let mut alice = connect_ws(&server, &alice_token, &room_a).await;
+    let _ = next_event_of_type(&mut alice, "presence").await;
+    let mut bob = connect_ws(&server, &bob_token, &room_a).await;
+    let _ = next_event_of_type(&mut bob, "presence").await;
+    let _ = next_event_of_type(&mut alice, "presence").await;
+    let mut carol = connect_ws(&server, &carol_token, &room_b).await;
+    let _ = next_event_of_type(&mut carol, "presence").await;
+
+    // Alice starts typing; Bob (same room) sees it with her identity.
+    send_text(&mut alice, r#"{"type":"typing"}"#).await;
+    let typing = next_event_of_type(&mut bob, "typing").await;
+    assert_eq!(typing["user"]["username"], alice_name);
+    assert_eq!(typing["user"]["id"], alice_id);
+
+    // A second typing frame within the throttle window is dropped server-side
+    // (sent immediately, so well inside the 1.5 s gate even on a slow machine).
+    send_text(&mut alice, r#"{"type":"typing"}"#).await;
+    assert_no_event(&mut bob, Duration::from_millis(300)).await;
+
+    // The sender never receives its own typing event.
+    assert_no_event(&mut alice, Duration::from_millis(300)).await;
+
+    // Carol (different room) must not see it.
+    assert_no_event(&mut carol, Duration::from_millis(300)).await;
+
+    // The connection survives the typing frames: a real message still flows.
+    let expected = format!("hello {bob_name}");
+    send_text(
+        &mut alice,
+        &format!(r#"{{"type":"send","body":"{expected}"}}"#),
+    )
+    .await;
+    let event = next_event_of_type(&mut bob, "message").await;
+    assert_eq!(event["message"]["body"], expected);
+
+    // Typing was never persisted: history holds only the real message.
+    let (_, history) = request(
+        &server.app,
+        "GET",
+        &format!("/api/rooms/{room_a}/messages"),
+        None,
+        Some(&alice_token),
+    )
+    .await;
+    let history = history.as_array().unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0]["body"], expected);
+}
+
+#[tokio::test]
 async fn invalid_sends_get_error_events_but_connection_survives() {
     let Some(server) = spawn_server().await else {
         return;

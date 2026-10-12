@@ -7,6 +7,7 @@ import {
   isSameDay,
   mergeMessages,
   shouldGroup,
+  typingLabel,
 } from "./messages";
 import type { Message } from "../api/types";
 
@@ -137,5 +138,25 @@ describe("formatDayLabel", () => {
 
   it("labels older days by date", () => {
     expect(formatDayLabel(noon(-6))).toMatch(/^[A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2}$/);
+  });
+});
+
+describe("typingLabel", () => {
+  const user = (username: string) => ({ id: username, username });
+
+  it("returns null when nobody is typing", () => {
+    expect(typingLabel([])).toBeNull();
+  });
+
+  it("names one typer", () => {
+    expect(typingLabel([user("alice")])).toBe("alice is typing…");
+  });
+
+  it("names two typers", () => {
+    expect(typingLabel([user("alice"), user("bob")])).toBe("alice and bob are typing…");
+  });
+
+  it("collapses three or more", () => {
+    expect(typingLabel([user("a"), user("b"), user("c")])).toBe("Several people are typing…");
   });
 });

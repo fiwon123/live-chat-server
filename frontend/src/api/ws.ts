@@ -30,3 +30,9 @@ export function encodeSend(body: string): string {
   const frame: ClientSend = { type: "send", body };
   return JSON.stringify(frame);
 }
+
+/** Encode a `typing` frame (no payload; the server knows the sender). */
+export function encodeTyping(): string {
+  const frame: ClientSend = { type: "typing" };
+  return JSON.stringify(frame);
+}
