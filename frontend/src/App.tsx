@@ -84,10 +84,14 @@ function App() {
   /** Smallest gap between message-level read calls (mark-all is never gated). */
   const READ_THROTTLE_MS = 800;
 
-  // Reflect unread messages in the tab title.
+  // Reflect unread messages (and the current route) in the tab title.
   useEffect(() => {
+    if (route === "about") {
+      document.title = "About · Live Chat";
+      return;
+    }
     document.title = total > 0 ? `(${total}) Live Chat` : "Live Chat";
-  }, [total]);
+  }, [total, route]);
 
   // Search rooms with Ctrl/Cmd+K.
   useEffect(() => {

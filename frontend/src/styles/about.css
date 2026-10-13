@@ -3,7 +3,10 @@
    light theme is active — see the `.about` block in index.css). */
 
 .about {
-  min-height: 100vh;
+  /* A fixed height makes `.about` the scroll container, so the sticky bar
+     below actually sticks; with `min-height` the page scrolled as a document
+     and the bar scrolled away with it. */
+  height: 100vh;
   overflow-y: auto;
   background: var(--bg);
   color: var(--text);
@@ -27,12 +30,15 @@
 }
 
 .about__content {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: clamp(1.6rem, 5vw, 3.2rem) clamp(1.1rem, 4vw, 2rem) 3rem;
   display: flex;
   flex-direction: column;
   gap: 2.2rem;
+}
+
+.about__inner {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: clamp(1.6rem, 5vw, 3.2rem) clamp(1.1rem, 4vw, 2rem) 3rem;
   animation: rise var(--dur-slow) var(--ease) both;
 }
 
@@ -50,10 +56,18 @@
   font-size: clamp(1.9rem, 4.5vw, 2.6rem);
   line-height: 1.1;
   letter-spacing: -0.02em;
+  color: var(--text);
   background: linear-gradient(120deg, var(--text), var(--accent-bright));
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+.about__title:focus,
+.about__title:focus-visible {
+  /* Focused programmatically on navigation; it is not a Tab stop, so no ring. */
+  outline: none;
+  box-shadow: none;
 }
 
 .about__lede {
@@ -157,6 +171,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  margin-top: 2.2rem;
   padding-top: 1.4rem;
   border-top: 1px solid var(--border);
 }
@@ -178,6 +193,7 @@
   position: absolute;
   top: 0.9rem;
   right: 1rem;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
