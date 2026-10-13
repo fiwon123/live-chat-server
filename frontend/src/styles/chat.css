@@ -7,6 +7,9 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* Painted here (not just inherited from `.app`) so the chat-scoped light
+     theme's `--bg` shows through the feed. */
+  background: var(--bg);
 }
 
 .chat.empty {
@@ -300,7 +303,11 @@
 
 .message__actions {
   position: absolute;
-  top: -0.9rem;
+  /* Fully above the message on the side away from the screen edge: right for
+     left-aligned (incoming) messages, left for right-aligned (own) messages.
+     `--below` flips it under the bubble when the message sits too close to the
+     top of the feed, so the bar is never clipped by the scroll container. */
+  bottom: calc(100% + 6px);
   right: 0.2rem;
   display: flex;
   gap: 0.1rem;
@@ -313,6 +320,16 @@
   pointer-events: none;
   transition: opacity var(--dur) var(--ease);
   z-index: 2;
+}
+
+.message.own .message__actions {
+  right: auto;
+  left: 0.2rem;
+}
+
+.message__actions--below {
+  bottom: auto;
+  top: calc(100% + 6px);
 }
 
 .message:hover .message__actions,

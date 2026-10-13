@@ -40,7 +40,6 @@ export interface ChatPanelProps {
   onTyping: () => void;
   onReact: (messageId: string, emoji: string) => void;
   onLoadOlder: () => void;
-  onLeave: () => void;
 }
 
 const STATUS_LABEL: Record<ConnectionStatus, string> = {
@@ -66,10 +65,12 @@ export function ChatPanel({
   onTyping,
   onReact,
   onLoadOlder,
-  onLeave,
 }: ChatPanelProps) {
   const [draft, setDraft] = useState("");
   const [showScrollButton, setShowScrollButton] = useState(false);
+  // Id of the message whose reaction bar must open *below* the bubble because
+  // there is not enough room above it inside the scrolling feed.
+  const [actionsBelowId, setActionsBelowId] = useState<string | null>(null);
 
   const feedRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -78,6 +79,24 @@ export function ChatPanel({
   const prevHeightRef = useRef(0);
 
   const live = status === "open";
+
+  // Room above a message needed to float its reaction bar without clipping.
+  const ACTIONS_CLEARANCE = 40;
+
+  /**
+   * Decide whether the reaction bar floats above or below the bubble. Runs
+   * when the bar is revealed (hover/focus) — never on selection — so picking
+   * an emoji leaves the bar exactly where it is.
+   */
+  const positionActions = (messageId: string, element: HTMLElement) => {
+    const feed = feedRef.current;
+    if (!feed) {
+      return;
+    }
+    const spaceAbove = element.getBoundingClientRect().top - feed.getBoundingClientRect().top;
+    // Same value on repeat hovers bails out of the re-render in React.
+    setActionsBelowId(spaceAbove < ACTIONS_CLEARANCE ? messageId : null);
+  };
 
   // Follow the conversation when pinned; keep position when loading older pages.
   useEffect(() => {
@@ -236,16 +255,6 @@ export function ChatPanel({
           </span>
           {onlineLabel}
         </div>
-
-        <button
-          type="button"
-          className="btn btn--ghost btn--icon"
-          onClick={onLeave}
-          aria-label={`Leave ${room.name}`}
-          title="Leave room"
-        >
-          <Icon name="logout" size={18} />
-        </button>
       </header>
 
       <div className="feed" ref={feedRef} onScroll={handleScroll}>
@@ -279,7 +288,11 @@ export function ChatPanel({
                   <span>{formatDayLabel(message.created_at)}</span>
                 </div>
               )}
-              <article className={`message${own ? " own" : ""}${grouped ? " grouped" : ""}`}>
+              <article
+                className={`message${own ? " own" : ""}${grouped ? " grouped" : ""}`}
+                onPointerEnter={(event) => positionActions(message.id, event.currentTarget)}
+                onFocus={(event) => positionActions(message.id, event.currentTarget)}
+              >
                 {!own && !grouped && <Avatar name={message.username} size={34} />}
                 <div className="message__body">
                   <div className="bubble">
@@ -340,7 +353,13 @@ export function ChatPanel({
                   )}
                 </div>
                 {!own && (
-                  <div className="message__actions" role="group" aria-label="Add a reaction">
+                  <div
+                    className={`message__actions${
+                      actionsBelowId === message.id ? " message__actions--below" : ""
+                    }`}
+                    role="group"
+                    aria-label="Add a reaction"
+                  >
                     {QUICK_REACTIONS.map((emoji) => {
                       const active = message.reactions.some(
                         (group) => group.emoji === emoji && hasReacted(group, currentUserId),
