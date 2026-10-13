@@ -426,6 +426,53 @@ async fn create_room_enforces_the_per_user_cap() {
 }
 
 #[tokio::test]
+async fn concurrent_creates_cannot_exceed_the_cap() {
+    let Some(app) = test_app().await else {
+        return;
+    };
+    let (token, username) = register_user(&app).await;
+    let prefix = format!("{username}-racy");
+
+    // Fire more concurrent creates than the cap allows. Without the per-user
+    // advisory lock (a bare `INSERT ... WHERE count(*) < n`), READ COMMITTED
+    // snapshots let several slip through; with it, exactly the cap succeeds.
+    let attempts = MAX_ROOMS_PER_USER + 5;
+    let futures = (0..attempts).map(|i| {
+        let name = format!("{prefix}-{i}");
+        let token = token.clone();
+        let app = &app;
+        async move {
+            request(
+                app,
+                "POST",
+                "/api/rooms",
+                Some(serde_json::json!({ "name": name })),
+                Some(&token),
+            )
+            .await
+            .0
+        }
+    });
+    let statuses = futures_util::future::join_all(futures).await;
+
+    let created = statuses
+        .iter()
+        .filter(|status| **status == StatusCode::CREATED)
+        .count() as i64;
+    assert_eq!(
+        created, MAX_ROOMS_PER_USER,
+        "exactly the cap should be created, got {statuses:?}"
+    );
+    assert_eq!(
+        statuses
+            .iter()
+            .filter(|status| **status == StatusCode::CONFLICT)
+            .count() as i64,
+        attempts - MAX_ROOMS_PER_USER,
+    );
+}
+
+#[tokio::test]
 async fn cap_is_per_user_not_global() {
     let Some(app) = test_app().await else {
         return;

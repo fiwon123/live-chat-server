@@ -17,10 +17,15 @@ impl Rooms {
     /// Create a room and add the creator as its first member, but only if the
     /// creator currently owns fewer than `max_rooms` rooms.
     ///
-    /// Both inserts happen in one statement so a room row can never exist
-    /// without its creator's membership. The cap check and the insert are part
-    /// of the same statement, so two concurrent creates cannot both slip past
-    /// the limit. Returns `Ok(None)` when the creator is already at the cap.
+    /// The whole thing runs in one transaction that first takes a per-user
+    /// advisory lock, so a user's concurrent creates are serialized: the count
+    /// below only ever sees creates that already committed, and the cap cannot
+    /// be exceeded. (A bare single-statement `INSERT ... WHERE count(...) < n`
+    /// is *not* enough — under READ COMMITTED two statements take snapshots
+    /// that miss each other's uncommitted rows.)
+    ///
+    /// Both inserts share the transaction, so a room row can never exist
+    /// without its creator's membership. Returns `Ok(None)` at the cap.
     ///
     /// Runtime `query_as` (not the `query_as!` macro) is deliberate: the SQL
     /// text is built here at runtime, so it does not need a `.sqlx` entry.
@@ -30,7 +35,17 @@ impl Rooms {
         created_by: Uuid,
         max_rooms: i64,
     ) -> Result<Option<Room>, sqlx::Error> {
-        sqlx::query_as::<_, Room>(
+        let mut tx = self.pool.begin().await?;
+
+        // Serialize this user's creates for the life of the transaction. The
+        // key is a hash of the user id; a collision only costs some extra
+        // serialization between two users, never correctness.
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))")
+            .bind(created_by.to_string())
+            .execute(&mut *tx)
+            .await?;
+
+        let room = sqlx::query_as::<_, Room>(
             r#"WITH new_room AS (
                    INSERT INTO rooms (name, created_by)
                    SELECT $1, $2
@@ -47,8 +62,11 @@ impl Rooms {
         .bind(name)
         .bind(created_by)
         .bind(max_rooms)
-        .fetch_optional(&self.pool)
-        .await
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(room)
     }
 
     /// Delete a room by id. Memberships, messages, reactions, and read cursors

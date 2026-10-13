@@ -223,6 +223,9 @@ function App() {
     setRoomsError(null);
     try {
       const rooms = await api.listRooms(token);
+      // Update the mirror immediately so a `room_deleted` frame landing in the
+      // same tick filters against the fresh list, not the previous one.
+      roomsRef.current = rooms;
       setRooms(rooms);
       sync(rooms);
     } catch (error) {
@@ -304,6 +307,10 @@ function App() {
       pendingDeleteRef.current.add(room.id);
       try {
         await api.deleteRoom(token, room.id);
+        // The echo may or may not have arrived by now; clear the marker either
+        // way so it cannot accumulate. A late echo then sees the room already
+        // gone (`wasListed` false) and stays quiet.
+        pendingDeleteRef.current.delete(room.id);
         // Remove locally first (and synchronously) so the `room_deleted` frame
         // the server sends back isn't treated as a surprise we must toast.
         removeRoomLocally(room.id);

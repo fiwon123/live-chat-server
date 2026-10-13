@@ -112,7 +112,12 @@ impl RoomService {
                 "only the room's creator can delete it".to_string(),
             ));
         }
-        self.rooms.delete(room_id).await?;
+        // The room could vanish between the check above and this delete (a
+        // concurrent duplicate delete); report that as the documented 404
+        // rather than a 204 for a room that was already gone.
+        if !self.rooms.delete(room_id).await? {
+            return Err(AppError::NotFound("room not found".to_string()));
+        }
         tracing::info!(room_id = %room_id, user_id = %user_id, "room deleted");
         Ok(())
     }

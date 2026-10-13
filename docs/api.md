@@ -93,8 +93,8 @@ of rooms (`MAX_ROOMS_PER_USER`, default 5):
 { "error": "you can create at most 5 rooms" }
 ```
 
-The cap is enforced inside the insert, so concurrent creates cannot both slip
-past it.
+The cap is enforced under a per-user advisory lock, so a user's concurrent
+creates are serialized and cannot both slip past it.
 
 ### `GET /api/rooms`
 
