@@ -9,7 +9,8 @@
 //
 // Requirements:
 //   - `npm ci` (installs @playwright/test) and `npx playwright install chromium`
-//   - Backend + frontend dev servers running (see README "Screenshots")
+//   - Backend + frontend dev servers running (see README "Regenerating the
+//     screenshots")
 //
 // Env: VITE_ORIGIN (default http://localhost:5173) — the Vite origin the
 // browser visits; /api and /health are proxied to the backend there.
@@ -354,7 +355,7 @@ async function main() {
       `could not launch Chromium: ${error.message.split("\n")[0]}\n` +
         "On Linux the Playwright browser usually needs system libraries before it runs:\n" +
         "  npx playwright install --with-deps chromium\n" +
-        'then start the stack (see README "Screenshots") and retry.',
+        'then start the stack (see README "Regenerating the screenshots") and retry.',
     );
   }
 
@@ -372,6 +373,19 @@ async function main() {
     await sleep(600);
     await page.screenshot({ path: png("00-overview.png") });
 
+    // Ephemeral overlays first, while the room is otherwise clean: hover
+    // reactions, then the composer emoji picker, then a typing indicator. The
+    // read receipt is left until last so it does not sit under every capture.
+    await captureReactionBar(page, "04-reactions.png");
+    await captureEmojiPicker(page, "05-emoji-picker.png");
+    // Close the picker so it does not bleed into the typing capture.
+    await page.keyboard.press("Escape");
+    bobSocket.send({ type: "typing" });
+    await captureTyping(page, "06-typing.png");
+    // Let the typing indicator expire (TTL ~3.5s) so it does not ride into the
+    // read-receipt capture.
+    await sleep(3_700);
+
     // Live chat: advance Bob's cursor to Alice's last message so the
     // "Seen by bob" receipt rides in on a live broadcast.
     await captureReceipt(page, {
@@ -380,12 +394,6 @@ async function main() {
       messageId: m3,
       name: "03-chat.png",
     });
-    await captureReactionBar(page, "04-reactions.png");
-    await captureEmojiPicker(page, "05-emoji-picker.png");
-    // Close the picker so it does not bleed into the typing capture.
-    await page.keyboard.press("Escape");
-    bobSocket.send({ type: "typing" });
-    await captureTyping(page, "06-typing.png");
     await captureAbout(page, "07-about.png");
     await context.close();
 
