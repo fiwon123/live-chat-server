@@ -318,7 +318,8 @@ async fn send_error(direct_tx: &mpsc::Sender<WsOutgoing>, message: &str) {
 /// Toggle a reaction on a message in this room and broadcast the change.
 ///
 /// Membership is re-checked, the message must belong to this session's room,
-/// and the emoji is validated; any failure yields a non-fatal `error` event.
+/// the emoji is validated, and you may only react to *other people's* messages;
+/// any failure yields a non-fatal `error` event.
 async fn handle_react(ctx: &mut SessionCtx, message_id: Uuid, emoji: String) {
     let emoji = match validate_emoji(&emoji) {
         Ok(emoji) => emoji,
@@ -337,13 +338,18 @@ async fn handle_react(ctx: &mut SessionCtx, message_id: Uuid, emoji: String) {
     }
 
     // The target message must exist and live in this room.
-    match ctx.messages.find_by_id(message_id).await {
-        Ok(Some(message)) if message.room_id == ctx.room_id => {}
+    let author_id = match ctx.messages.find_by_id(message_id).await {
+        Ok(Some(message)) if message.room_id == ctx.room_id => message.user_id,
         Ok(_) => return send_error(&ctx.direct_tx, "message not found in this room").await,
         Err(err) => {
             tracing::error!(error = ?err, "message lookup failed");
             return send_error(&ctx.direct_tx, "failed to load message").await;
         }
+    };
+
+    // Reactions are for other people's messages only.
+    if author_id == ctx.user_id {
+        return send_error(&ctx.direct_tx, "you cannot react to your own message").await;
     }
 
     let added = match ctx.reactions.toggle(message_id, ctx.user_id, &emoji).await {

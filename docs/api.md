@@ -280,6 +280,8 @@ silently, and the connection stays open.
 present → removed. `emoji` is trimmed, must be non-empty, at most **16 chars**,
 and control-character free. The target message must exist **in the caller's
 current room**; otherwise an `error` frame is returned and nothing changes.
+Reactions are for **other people's** messages — reacting to your own returns an
+`error` frame and changes nothing.
 
 ### Server → client frames
 
@@ -323,7 +325,7 @@ Semantics:
   for inserts, DELETE on removal); a `reaction` event is broadcast room-wide
   (`message_id`, `emoji`, `user_id`, `username`, `added`). The event identifies
   the actor so clients can update their local lists. Rendering uses
-  `user_ids.length` to compute `count`.
+  `user_ids.length` to compute `count`. A user cannot react to their own message.
 - **Error frames are non-fatal**: a failed `send` (blank, too long, malformed
   JSON, unparseable shape) or an invalid `react` produces an `error` event and
   the connection stays open. Invalid messages/reactions are never persisted.

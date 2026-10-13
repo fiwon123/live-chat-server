@@ -5,7 +5,10 @@
 
 import type { Message, ReactionGroup } from "../api/types";
 
-/** The quick-reaction bar offered on hover; users can still type others in chat. */
+/**
+ * The quick-reaction bar offered on hover. It is only shown on other people's
+ * messages — you cannot react to your own — so users type custom emoji in chat.
+ */
 export const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "👀"] as const;
 
 /**
