@@ -286,19 +286,6 @@ function App() {
     [token, refreshRooms, push],
   );
 
-  const leaveRoom = useCallback(async () => {
-    const room = activeRoom;
-    setActiveRoom(null);
-    if (token && room) {
-      try {
-        await api.leaveRoom(token, room.id);
-      } catch {
-        // Leaving the view is enough; a failed API call shouldn't trap the user.
-      }
-      void refreshRooms();
-    }
-  }, [token, activeRoom, refreshRooms]);
-
   const deleteRoom = useCallback(
     async (room: Room) => {
       if (!token) {
@@ -418,7 +405,6 @@ function App() {
             onTyping={chat.sendTyping}
             onReact={chat.react}
             onLoadOlder={chat.loadOlder}
-            onLeave={() => void leaveRoom()}
           />
         ) : (
           <section className="chat empty">

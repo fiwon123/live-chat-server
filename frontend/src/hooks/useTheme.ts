@@ -1,15 +1,13 @@
 // Light/dark theme persisted to localStorage and mirrored on <html data-theme>.
+//
+// The light theme is scoped to the conversation panel (see index.css), so the
+// app shell stays dark and the browser theme-color stays at the shell colour.
 
 import { useCallback, useEffect, useState } from "react";
 
 export type Theme = "dark" | "light";
 
 const THEME_KEY = "livechat.theme";
-
-const THEME_COLORS: Record<Theme, string> = {
-  dark: "#0a1113",
-  light: "#f4f7f6",
-};
 
 function readInitialTheme(): Theme {
   try {
@@ -28,9 +26,6 @@ export function useTheme() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    document
-      .querySelector('meta[name="theme-color"]')
-      ?.setAttribute("content", THEME_COLORS[theme]);
     try {
       window.localStorage.setItem(THEME_KEY, theme);
     } catch {
