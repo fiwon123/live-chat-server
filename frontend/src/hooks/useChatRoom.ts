@@ -40,7 +40,11 @@ export interface ChatRoom {
  * Connect to a room's WebSocket and load its history. Reconnects with capped
  * exponential backoff; a room change tears the connection down.
  */
-export function useChatRoom(token: string, roomId: string): ChatRoom {
+export function useChatRoom(
+  token: string,
+  roomId: string,
+  onRoomDeleted?: (roomId: string) => void,
+): ChatRoom {
   const [messages, setMessages] = useState<Message[]>([]);
   const [online, setOnline] = useState<Record<string, PresenceUser>>({});
   const [typing, setTyping] = useState<Record<string, PresenceUser>>({});
@@ -54,6 +58,12 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
   const oldestRef = useRef<string | null>(null);
   const typingTimersRef = useRef(new Map<string, number>());
   const typingSentAtRef = useRef(0);
+  // Kept in a ref so a new callback identity never re-runs the socket effect.
+  const onRoomDeletedRef = useRef(onRoomDeleted);
+
+  useEffect(() => {
+    onRoomDeletedRef.current = onRoomDeleted;
+  }, [onRoomDeleted]);
 
   const active = token.length > 0 && roomId.length > 0;
 
@@ -176,6 +186,17 @@ export function useChatRoom(token: string, roomId: string): ChatRoom {
         );
       } else if (event.type === "read") {
         setReads((prev) => applyRead(prev, event.message_id, event.user));
+      } else if (event.type === "room_deleted") {
+        // The room is gone; stop the reconnect loop instead of hammering a
+        // handshake that can only fail, then let the parent drop the room.
+        cancelled = true;
+        if (reconnectTimer !== undefined) {
+          window.clearTimeout(reconnectTimer);
+        }
+        socketRef.current?.close();
+        socketRef.current = null;
+        setStatus("closed");
+        onRoomDeletedRef.current?.(event.room_id);
       } else {
         setError(event.message);
       }

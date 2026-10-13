@@ -2,8 +2,9 @@
 //! validation errors, revoked-membership teardown, and the save-before-
 //! broadcast guarantee.
 //!
-//! The server is spawned on an ephemeral port (`127.0.0.1:0`). Tests skip
-//! gracefully when no database is reachable.
+//! Each test runs against its own isolated database (created and dropped by
+//! `#[sqlx::test]`); the server is spawned on an ephemeral port
+//! (`127.0.0.1:0`).
 
 mod common;
 
@@ -29,17 +30,19 @@ struct RunningServer {
     app: TestApp,
 }
 
-/// Build the app and serve it on `127.0.0.1:0`; `None` when no DB is reachable.
-async fn spawn_server() -> Option<RunningServer> {
-    let app = test_app().await?;
-    let listener = TcpListener::bind("127.0.0.1:0").await.ok()?;
-    let addr = listener.local_addr().ok()?;
+/// Build the app and serve it on `127.0.0.1:0`.
+async fn spawn_server(pool: sqlx::PgPool) -> RunningServer {
+    let app = test_app(pool);
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind ephemeral port");
+    let addr = listener.local_addr().expect("read local addr");
     let router = app.router.clone();
     // Detached: the task lives until the test runtime shuts down.
     tokio::spawn(async move {
         let _ = axum::serve(listener, router).await;
     });
-    Some(RunningServer { addr, app })
+    RunningServer { addr, app }
 }
 
 /// Create a room as the given user; returns its id and creator's user id.
@@ -138,11 +141,9 @@ async fn assert_stream_closed(stream: &mut WsStream) {
     }
 }
 
-#[tokio::test]
-async fn handshake_rejects_bad_token_unknown_room_and_non_member() {
-    let Some(server) = spawn_server().await else {
-        return;
-    };
+#[sqlx::test]
+async fn handshake_rejects_bad_token_unknown_room_and_non_member(pool: sqlx::PgPool) {
+    let server = spawn_server(pool).await;
     let (token, _) = register_user(&server.app).await;
     let (outsider, _) = register_user(&server.app).await;
 
@@ -170,11 +171,9 @@ async fn handshake_rejects_bad_token_unknown_room_and_non_member() {
     drop(stream);
 }
 
-#[tokio::test]
-async fn broadcasts_only_within_room_and_persists() {
-    let Some(server) = spawn_server().await else {
-        return;
-    };
+#[sqlx::test]
+async fn broadcasts_only_within_room_and_persists(pool: sqlx::PgPool) {
+    let server = spawn_server(pool).await;
 
     // Alice creates room A (creator is a member), Bob joins it.
     // Carol creates room B and is its only member.
@@ -264,11 +263,9 @@ async fn broadcasts_only_within_room_and_persists() {
     assert_eq!(history[0]["username"], alice_name);
 }
 
-#[tokio::test]
-async fn typing_broadcasts_within_room_only_and_is_not_persisted() {
-    let Some(server) = spawn_server().await else {
-        return;
-    };
+#[sqlx::test]
+async fn typing_broadcasts_within_room_only_and_is_not_persisted(pool: sqlx::PgPool) {
+    let server = spawn_server(pool).await;
 
     let (alice_token, alice_name) = register_user(&server.app).await;
     let (bob_token, bob_name) = register_user(&server.app).await;
@@ -337,36 +334,45 @@ async fn typing_broadcasts_within_room_only_and_is_not_persisted() {
     assert_eq!(history[0]["body"], expected);
 }
 
-#[tokio::test]
-async fn reactions_toggle_persist_and_broadcast_within_room_only() {
-    let Some(server) = spawn_server().await else {
-        return;
-    };
+#[sqlx::test]
+async fn reactions_toggle_persist_and_broadcast_within_room_only(pool: sqlx::PgPool) {
+    let server = spawn_server(pool).await;
 
-    let (alice_token, alice_name) = register_user(&server.app).await;
-    let (bob_token, _) = register_user(&server.app).await;
+    let (alice_token, _alice_name) = register_user(&server.app).await;
+    let (bob_token, bob_name) = register_user(&server.app).await;
+    let (dave_token, _) = register_user(&server.app).await;
     let (carol_token, _) = register_user(&server.app).await;
 
-    let (room_a, alice_id) = create_room(&server.app, &alice_token, "react-a").await;
+    let (room_a, _) = create_room(&server.app, &alice_token, "react-a").await;
     let (room_b, _) = create_room(&server.app, &carol_token, "react-b").await;
 
-    let (status, _) = request(
-        &server.app,
-        "POST",
-        &format!("/api/rooms/{room_a}/join"),
-        None,
-        Some(&bob_token),
-    )
-    .await;
-    assert_eq!(status, StatusCode::NO_CONTENT);
+    // Bob and Dave join room A; Carol owns room B.
+    for token in [&bob_token, &dave_token] {
+        let (status, _) = request(
+            &server.app,
+            "POST",
+            &format!("/api/rooms/{room_a}/join"),
+            None,
+            Some(token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
 
-    // Drain each client's own `joined` so the streams are clear.
+    // Connect one at a time, draining each client's own `joined` so the
+    // streams are clear before the interesting events.
     let mut alice = connect_ws(&server, &alice_token, &room_a).await;
     let _ = next_event_of_type(&mut alice, "presence").await;
     let mut bob = connect_ws(&server, &bob_token, &room_a).await;
     let bob_joined = next_event_of_type(&mut bob, "presence").await;
     let bob_id = bob_joined["user"]["id"].as_str().unwrap().to_string();
     let _ = next_event_of_type(&mut alice, "presence").await;
+    let mut dave = connect_ws(&server, &dave_token, &room_a).await;
+    let dave_joined = next_event_of_type(&mut dave, "presence").await;
+    let dave_id = dave_joined["user"]["id"].as_str().unwrap().to_string();
+    // Alice and Bob see Dave join.
+    let _ = next_event_of_type(&mut alice, "presence").await;
+    let _ = next_event_of_type(&mut bob, "presence").await;
     let mut carol = connect_ws(&server, &carol_token, &room_b).await;
     let _ = next_event_of_type(&mut carol, "presence").await;
 
@@ -374,6 +380,7 @@ async fn reactions_toggle_persist_and_broadcast_within_room_only() {
     send_text(&mut alice, r#"{"type":"send","body":"reactable"}"#).await;
     let alice_msg = next_event_of_type(&mut alice, "message").await;
     let bob_msg = next_event_of_type(&mut bob, "message").await;
+    let _ = next_event_of_type(&mut dave, "message").await;
     let message_id = alice_msg["message"]["id"].as_str().unwrap().to_string();
     assert_eq!(bob_msg["message"]["id"], message_id);
     // A freshly persisted message carries no reactions.
@@ -384,18 +391,34 @@ async fn reactions_toggle_persist_and_broadcast_within_room_only() {
             .is_empty()
     );
 
-    // Alice reacts 👍: both room-A clients (including the sender) see it.
+    // Reacting to your OWN message is rejected; nothing is broadcast.
     send_text(
         &mut alice,
         &json!({ "type": "react", "message_id": message_id, "emoji": "👍" }).to_string(),
     )
     .await;
-    for stream in [&mut alice, &mut bob] {
+    let error = next_event_of_type(&mut alice, "error").await;
+    assert!(
+        error["message"].as_str().unwrap().contains("your own"),
+        "error message: {}",
+        error["message"]
+    );
+    assert_no_event(&mut bob, Duration::from_millis(200)).await;
+    assert_no_event(&mut dave, Duration::from_millis(200)).await;
+
+    // Bob reacts 👍 to Alice's message: all room-A clients (including the
+    // sender) see it.
+    send_text(
+        &mut bob,
+        &json!({ "type": "react", "message_id": message_id, "emoji": "👍" }).to_string(),
+    )
+    .await;
+    for stream in [&mut alice, &mut bob, &mut dave] {
         let event = next_event_of_type(stream, "reaction").await;
         assert_eq!(event["message_id"], message_id);
         assert_eq!(event["emoji"], "👍");
-        assert_eq!(event["user_id"], alice_id);
-        assert_eq!(event["username"], alice_name);
+        assert_eq!(event["user_id"], bob_id);
+        assert_eq!(event["username"], bob_name);
         assert_eq!(event["added"], true);
     }
 
@@ -417,17 +440,17 @@ async fn reactions_toggle_persist_and_broadcast_within_room_only() {
     assert_eq!(reactions.len(), 1);
     assert_eq!(reactions[0]["emoji"], "👍");
     assert_eq!(reactions[0]["count"], 1);
-    assert_eq!(reactions[0]["user_ids"][0], alice_id);
+    assert_eq!(reactions[0]["user_ids"][0], bob_id);
 
-    // Bob adds the same emoji: still one group, but count 2.
+    // Dave adds the same emoji: still one group, but count 2.
     send_text(
-        &mut bob,
+        &mut dave,
         &json!({ "type": "react", "message_id": message_id, "emoji": "👍" }).to_string(),
     )
     .await;
-    for stream in [&mut alice, &mut bob] {
+    for stream in [&mut alice, &mut bob, &mut dave] {
         let event = next_event_of_type(stream, "reaction").await;
-        assert_eq!(event["user_id"], bob_id);
+        assert_eq!(event["user_id"], dave_id);
         assert_eq!(event["added"], true);
     }
     let (_, history) = request(
@@ -446,15 +469,15 @@ async fn reactions_toggle_persist_and_broadcast_within_room_only() {
     );
     assert_eq!(reactions[0]["count"], 2);
 
-    // Alice reacts 👍 again: toggles her reaction off (added: false).
+    // Bob reacts 👍 again: toggles his reaction off (added: false); Dave's stays.
     send_text(
-        &mut alice,
+        &mut bob,
         &json!({ "type": "react", "message_id": message_id, "emoji": "👍" }).to_string(),
     )
     .await;
-    for stream in [&mut alice, &mut bob] {
+    for stream in [&mut alice, &mut bob, &mut dave] {
         let event = next_event_of_type(stream, "reaction").await;
-        assert_eq!(event["user_id"], alice_id);
+        assert_eq!(event["user_id"], bob_id);
         assert_eq!(event["added"], false);
     }
     let (_, history) = request(
@@ -468,6 +491,7 @@ async fn reactions_toggle_persist_and_broadcast_within_room_only() {
     let reactions = history[0]["reactions"].as_array().unwrap();
     assert_eq!(reactions.len(), 1);
     assert_eq!(reactions[0]["count"], 1);
+    assert_eq!(reactions[0]["user_ids"][0], dave_id);
 
     // Reacting to a message in another room is rejected without delivery.
     send_text(&mut carol, r#"{"type":"send","body":"in room b"}"#).await;
@@ -518,11 +542,9 @@ async fn reactions_toggle_persist_and_broadcast_within_room_only() {
     assert_eq!(history[1]["reactions"][0]["count"], 1);
 }
 
-#[tokio::test]
-async fn invalid_sends_get_error_events_but_connection_survives() {
-    let Some(server) = spawn_server().await else {
-        return;
-    };
+#[sqlx::test]
+async fn invalid_sends_get_error_events_but_connection_survives(pool: sqlx::PgPool) {
+    let server = spawn_server(pool).await;
     let (token, _) = register_user(&server.app).await;
     let (room_id, _) = create_room(&server.app, &token, "validate").await;
 
@@ -568,11 +590,79 @@ async fn invalid_sends_get_error_events_but_connection_survives() {
     assert_eq!(history[0]["body"], "still here");
 }
 
-#[tokio::test]
-async fn revoked_membership_closes_session_without_delivery() {
-    let Some(server) = spawn_server().await else {
-        return;
-    };
+#[sqlx::test]
+async fn multiline_messages_broadcast_and_persist_with_normalized_newlines(pool: sqlx::PgPool) {
+    let server = spawn_server(pool).await;
+    let (token, _) = register_user(&server.app).await;
+    let (room_id, _) = create_room(&server.app, &token, "multiline").await;
+
+    let mut stream = connect_ws(&server, &token, &room_id).await;
+    let _ = next_event_of_type(&mut stream, "presence").await;
+
+    // A message with real `\n` newlines is accepted body-for-body.
+    send_text(
+        &mut stream,
+        &json!({"type": "send", "body": "line one\nline two"}).to_string(),
+    )
+    .await;
+    let event = next_event_of_type(&mut stream, "message").await;
+    assert_eq!(event["message"]["body"], "line one\nline two");
+
+    // CRLF and lone CR are normalized to LF so any client's line endings land intact.
+    send_text(
+        &mut stream,
+        &json!({"type": "send", "body": "a\r\nb\r\nc"}).to_string(),
+    )
+    .await;
+    let event = next_event_of_type(&mut stream, "message").await;
+    assert_eq!(event["message"]["body"], "a\nb\nc");
+
+    send_text(
+        &mut stream,
+        &json!({"type": "send", "body": "d\re"}).to_string(),
+    )
+    .await;
+    let event = next_event_of_type(&mut stream, "message").await;
+    assert_eq!(event["message"]["body"], "d\ne");
+
+    // Other control characters are still rejected (NUL must not reach Postgres).
+    send_text(
+        &mut stream,
+        &json!({"type": "send", "body": "bad\u{0}nul"}).to_string(),
+    )
+    .await;
+    let error = next_event_of_type(&mut stream, "error").await;
+    assert!(
+        error["message"].as_str().unwrap().contains("control"),
+        "error message: {}",
+        error["message"]
+    );
+
+    // All three valid messages persisted with their (normalized) newlines.
+    let (status, history) = request(
+        &server.app,
+        "GET",
+        &format!("/api/rooms/{room_id}/messages"),
+        None,
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let history = history.as_array().unwrap();
+    assert_eq!(history.len(), 3);
+    // History is newest-first and ties break on a random UUID, so compare the
+    // persisted bodies order-independently: all three, newlines intact.
+    let mut bodies: Vec<&str> = history
+        .iter()
+        .map(|m| m["body"].as_str().unwrap())
+        .collect();
+    bodies.sort_unstable();
+    assert_eq!(bodies, vec!["a\nb\nc", "d\ne", "line one\nline two"]);
+}
+
+#[sqlx::test]
+async fn revoked_membership_closes_session_without_delivery(pool: sqlx::PgPool) {
+    let server = spawn_server(pool).await;
     let (alice_token, alice_name) = register_user(&server.app).await;
     let (bob_token, _) = register_user(&server.app).await;
 
@@ -618,11 +708,9 @@ async fn revoked_membership_closes_session_without_delivery() {
     assert_eq!(left["user"]["username"], alice_name);
 }
 
-#[tokio::test]
-async fn duplicate_connections_reference_count_presence() {
-    let Some(server) = spawn_server().await else {
-        return;
-    };
+#[sqlx::test]
+async fn duplicate_connections_reference_count_presence(pool: sqlx::PgPool) {
+    let server = spawn_server(pool).await;
     let (observer_token, observer_name) = register_user(&server.app).await;
     let (y_token, y_name) = register_user(&server.app).await;
 
@@ -672,11 +760,9 @@ async fn duplicate_connections_reference_count_presence() {
     assert_eq!(left["user"]["username"], y_name);
 }
 
-#[tokio::test]
-async fn read_receipts_broadcast_within_room_only() {
-    let Some(server) = spawn_server().await else {
-        return;
-    };
+#[sqlx::test]
+async fn read_receipts_broadcast_within_room_only(pool: sqlx::PgPool) {
+    let server = spawn_server(pool).await;
 
     let (alice_token, _) = register_user(&server.app).await;
     let (bob_token, bob_name) = register_user(&server.app).await;
@@ -729,4 +815,66 @@ async fn read_receipts_broadcast_within_room_only() {
 
     // Carol (different room) must not see the receipt.
     assert_no_event(&mut carol, Duration::from_millis(300)).await;
+}
+
+#[sqlx::test]
+async fn deleting_a_room_notifies_members_and_no_one_else(pool: sqlx::PgPool) {
+    let server = spawn_server(pool).await;
+
+    let (alice_token, _) = register_user(&server.app).await;
+    let (bob_token, _) = register_user(&server.app).await;
+    let (carol_token, _) = register_user(&server.app).await;
+
+    let (room_a, _) = create_room(&server.app, &alice_token, "delete-a").await;
+    let (room_b, _) = create_room(&server.app, &carol_token, "delete-b").await;
+
+    let (status, _) = request(
+        &server.app,
+        "POST",
+        &format!("/api/rooms/{room_a}/join"),
+        None,
+        Some(&bob_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // Drain each client's own `joined` so the streams are clear.
+    let mut alice = connect_ws(&server, &alice_token, &room_a).await;
+    let _ = next_event_of_type(&mut alice, "presence").await;
+    let mut bob = connect_ws(&server, &bob_token, &room_a).await;
+    let _ = next_event_of_type(&mut bob, "presence").await;
+    let _ = next_event_of_type(&mut alice, "presence").await;
+    let mut carol = connect_ws(&server, &carol_token, &room_b).await;
+    let _ = next_event_of_type(&mut carol, "presence").await;
+
+    // The owner deletes room A over HTTP.
+    let (status, _) = request(
+        &server.app,
+        "DELETE",
+        &format!("/api/rooms/{room_a}"),
+        None,
+        Some(&alice_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // Every member — the owner included — is told the room is gone.
+    for stream in [&mut alice, &mut bob] {
+        let event = next_event_of_type(stream, "room_deleted").await;
+        assert_eq!(event["room_id"], room_a);
+    }
+
+    // A client in another room is unaffected.
+    assert_no_event(&mut carol, Duration::from_millis(300)).await;
+
+    // The room is really gone: history now 404s for a (former) member.
+    let (status, _) = request(
+        &server.app,
+        "GET",
+        &format!("/api/rooms/{room_a}/messages"),
+        None,
+        Some(&bob_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }

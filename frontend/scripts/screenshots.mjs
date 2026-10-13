@@ -1,13 +1,16 @@
-// Playwright screenshot harness for the visual subagent.
+// Playwright screenshot harness for the README.
 //
-// Boots a seeded session against a RUNNING stack and captures the key screens
-// (login, rooms, chat with reactions/read receipts, dark + light themes) as
-// PNGs under frontend/screenshots/ for review. This is a plain Node script —
-// it is NOT part of the `make check` gate and CI never runs it.
+// Boots a seeded session against a RUNNING stack and captures one PNG per key
+// feature (an overview/hero, auth, room list, live chat with a read receipt,
+// the hover reaction bar, the composer emoji picker, the typing indicator, and
+// the About page) under frontend/screenshots/ for review. All captures are in
+// the dark theme — the README ships one consistent set. This is a plain Node
+// script — it is NOT part of the `make check` gate and CI never runs it.
 //
 // Requirements:
 //   - `npm ci` (installs @playwright/test) and `npx playwright install chromium`
-//   - Backend + frontend dev servers running (see README "Screenshots")
+//   - Backend + frontend dev servers running (see README "Regenerating the
+//     screenshots")
 //
 // Env: VITE_ORIGIN (default http://localhost:5173) — the Vite origin the
 // browser visits; /api and /health are proxied to the backend there.
@@ -86,7 +89,11 @@ async function api(pathname, { method = "GET", token = null, body = null } = {})
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`${method} /api${pathname} -> ${response.status}: ${text.slice(0, 200)}`);
+    const error = new Error(
+      `${method} /api${pathname} -> ${response.status}: ${text.slice(0, 200)}`,
+    );
+    error.status = response.status;
+    throw error;
   }
   if (response.status === 204) {
     return null;
@@ -95,59 +102,101 @@ async function api(pathname, { method = "GET", token = null, body = null } = {})
   return text.length === 0 ? null : JSON.parse(text);
 }
 
-async function register(handle) {
-  const username = `${handle}_${Math.random().toString(36).slice(2, 8)}`;
-  const registered = await api("/auth/register", {
-    method: "POST",
-    body: { username, password: PASSWORD },
-  });
-  return { token: registered.token, id: registered.user.id, username, password: PASSWORD };
+/**
+ * Register `handle`, or log it back in if it already exists. Reusing the same
+ * two accounts across runs keeps the author names clean in every capture.
+ */
+async function ensureUser(handle) {
+  try {
+    const registered = await api("/auth/register", {
+      method: "POST",
+      body: { username: handle, password: PASSWORD },
+    });
+    return { token: registered.token, id: registered.user.id, username: handle };
+  } catch (error) {
+    if (error.status !== 409) {
+      throw error;
+    }
+    const loggedIn = await api("/auth/login", {
+      method: "POST",
+      body: { username: handle, password: PASSWORD },
+    });
+    return { token: loggedIn.token, id: loggedIn.user.id, username: handle };
+  }
 }
 
 /**
- * Open a WS session as `token` in `roomId`, send `frames`, and resolve with
- * the collected server events once every `send` frame has been echoed back.
+ * Delete every room `userId` owns. The backend caps owned rooms per user
+ * (`MAX_ROOMS_PER_USER`, default 5), so re-running this harness with the same
+ * account would eventually hit the cap; clearing them first keeps runs
+ * repeatable and the room list tidy.
  */
-function sendFrames(token, roomId, frames) {
-  return new Promise((resolve, reject) => {
-    const socket = new WebSocket(
-      `${ORIGIN.replace(/^http/, "ws")}/api/ws?token=${encodeURIComponent(token)}&room_id=${encodeURIComponent(roomId)}`,
-    );
-    const expectedSends = frames.filter((frame) => frame.type === "send").length;
-    const events = [];
-    let timer = setTimeout(() => {
-      socket.close();
-      reject(new Error("timed out waiting for message echoes on the seed socket"));
-    }, 10_000);
+async function deleteOwnedRooms(token, userId) {
+  const rooms = await api("/rooms", { token });
+  for (const room of rooms) {
+    if (room.created_by === userId) {
+      await api(`/rooms/${room.id}`, { method: "DELETE", token });
+    }
+  }
+}
 
-    socket.addEventListener("open", () => {
-      for (const frame of frames) {
-        socket.send(JSON.stringify(frame));
+/** Open a WS session as `token` in `roomId`, resolved once the socket opens. */
+function openSocket(token, roomId) {
+  const url = `${ORIGIN.replace(/^http/, "ws")}/api/ws?token=${encodeURIComponent(token)}&room_id=${encodeURIComponent(roomId)}`;
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(url);
+    const events = [];
+    const waiters = [];
+    // Events are consumed in order: `waitFor` scans from `cursor` so successive
+    // calls (one per seeded send) resolve to distinct echoes, not the same one.
+    let cursor = 0;
+    const take = (predicate) => {
+      for (let i = cursor; i < events.length; i += 1) {
+        if (predicate(events[i])) {
+          cursor = i + 1;
+          return events[i];
+        }
       }
-    });
+      return undefined;
+    };
+    socket.addEventListener("open", () =>
+      resolve({
+        send: (frame) => socket.send(JSON.stringify(frame)),
+        close: () => socket.close(),
+        /** Resolve with the next (unconsumed) event matching `predicate`. */
+        waitFor(predicate, label = "event", timeoutMs = 8_000) {
+          const found = take(predicate);
+          if (found) {
+            return Promise.resolve(found);
+          }
+          return new Promise((res, rej) => {
+            const timer = setTimeout(
+              () => rej(new Error(`timed out waiting for ${label}`)),
+              timeoutMs,
+            );
+            waiters.push({ predicate, resolve: res, timer });
+          });
+        },
+      }),
+    );
     socket.addEventListener("message", (event) => {
       let data;
       try {
         data = JSON.parse(event.data);
       } catch {
-        clearTimeout(timer);
-        socket.close();
-        reject(new Error("seed socket sent non-JSON data"));
         return;
       }
       events.push(data);
-      if (events.filter((item) => item.type === "message").length >= expectedSends) {
-        clearTimeout(timer);
-        socket.close();
-        resolve(events);
+      for (let i = waiters.length - 1; i >= 0; i -= 1) {
+        if (waiters[i].predicate(data)) {
+          const [waiter] = waiters.splice(i, 1);
+          clearTimeout(waiter.timer);
+          cursor = events.length;
+          waiter.resolve(data);
+        }
       }
     });
-    socket.addEventListener("close", () => clearTimeout(timer));
-    socket.addEventListener("error", () => {
-      clearTimeout(timer);
-      socket.close();
-      reject(new Error("seed WebSocket errored"));
-    });
+    socket.addEventListener("error", () => reject(new Error("seed WebSocket errored")));
   });
 }
 
@@ -155,22 +204,18 @@ function sendFrames(token, roomId, frames) {
 
 async function login(page, user) {
   await page.locator('input[autocomplete="username"]').fill(user.username);
-  await page.locator('input[autocomplete="current-password"]').fill(user.password);
+  await page.locator('input[autocomplete="current-password"]').fill(PASSWORD);
   await page.locator('button[type="submit"]').click();
   await page.locator(".rooms").waitFor();
 }
 
-async function newContext(browser, theme) {
+async function newContext(browser) {
   const context = await browser.newContext({
     viewport: VIEWPORT,
-    colorScheme: theme,
-    permissions: [{ origin: ORIGIN, permission: "notifications" }],
+    colorScheme: "dark",
   });
-  if (theme === "light") {
-    await context.addInitScript(() => {
-      localStorage.setItem("livechat.theme", "light");
-    });
-  }
+  // Scope the granted permission to the app origin (the API is proxied there).
+  await context.grantPermissions(["notifications"], { origin: ORIGIN });
   return context;
 }
 
@@ -182,21 +227,68 @@ async function captureAuth(page, name) {
   await page.screenshot({ path: png(name) });
 }
 
-async function captureRooms(page, roomName, name) {
+async function openRoom(page, roomName) {
   const row = page.locator(".rooms__list button", { hasText: roomName });
   await row.first().waitFor();
   await row.first().scrollIntoViewIfNeeded();
+  return row.first();
+}
+
+async function captureRooms(page, roomName, name) {
+  await openRoom(page, roomName);
   await sleep(150);
   await page.screenshot({ path: png(name) });
 }
 
-async function captureChat(page, roomName, name) {
-  const row = page.locator(".rooms__list button", { hasText: roomName });
-  await row.first().waitFor();
-  await row.first().click();
+async function enterRoom(page, roomName) {
+  const row = await openRoom(page, roomName);
+  await row.click();
   await page.locator(".message").first().waitFor();
   await page.locator(".status-open").waitFor();
+}
+
+/**
+ * Trigger a fresh ephemeral read receipt for the connected viewer and capture
+ * the chat once it lands. Read receipts broadcast only on a real cursor
+ * advance, so each capture passes a cursor newer than the last one. The caller
+ * must already be in the room (see `enterRoom`).
+ */
+async function captureReceipt(page, { roomId, token, messageId, name }) {
+  await api(`/rooms/${roomId}/read`, { method: "POST", token, body: { message_id: messageId } });
+  await page.locator(".message__seen", { hasText: "Seen by bob" }).waitFor();
   await sleep(300);
+  await page.screenshot({ path: png(name) });
+}
+
+/**
+ * Hover an incoming message so its reaction bar is revealed. Own messages have
+ * no bar (by design), so the target is the last `.message:not(.own)`.
+ */
+async function captureReactionBar(page, name) {
+  const target = page.locator(".message:not(.own)").last();
+  await target.scrollIntoViewIfNeeded();
+  await target.hover();
+  await sleep(250);
+  await page.screenshot({ path: png(name) });
+}
+
+async function captureEmojiPicker(page, name) {
+  await page.locator(".composer__emoji").click();
+  await page.locator(".emoji__pop").waitFor();
+  await sleep(150);
+  await page.screenshot({ path: png(name) });
+}
+
+async function captureTyping(page, name) {
+  await page.locator(".typing__dots").waitFor();
+  await sleep(150);
+  await page.screenshot({ path: png(name) });
+}
+
+async function captureAbout(page, name) {
+  await page.goto(`${ORIGIN}/#/about`, { waitUntil: "domcontentloaded" });
+  await page.locator(".about").waitFor();
+  await sleep(200);
   await page.screenshot({ path: png(name) });
 }
 
@@ -208,8 +300,10 @@ async function main() {
 
   // Seed a two-person room with messages, reactions, and a read receipt so the
   // chat captures show the realtime features, not the empty state.
-  const alice = await register("alice");
-  const bob = await register("bob");
+  const alice = await ensureUser("alice");
+  const bob = await ensureUser("bob");
+  await deleteOwnedRooms(alice.token, alice.id);
+
   const roomName = `lobby-${Math.random().toString(36).slice(2, 6)}`;
   const room = await api("/rooms", {
     method: "POST",
@@ -218,23 +312,41 @@ async function main() {
   });
   await api(`/rooms/${room.id}/join`, { method: "POST", token: bob.token });
 
-  const aliceEvents = await sendFrames(alice.token, room.id, [
-    { type: "send", body: "Hey everyone — first pass on the new shell." },
-    { type: "send", body: "Docs live at https://example.com — links render inline." },
-    { type: "send", body: "Give this one a reaction 👋" },
-  ]);
-  const aliceMessageIds = aliceEvents
-    .filter((event) => event.type === "message")
-    .map((event) => event.message.id);
+  // Alice posts first (her own messages render right-aligned, without a bar).
+  const aliceSocket = await openSocket(alice.token, room.id);
+  const aliceBodies = [
+    "Hey everyone — first pass on the new shell.",
+    "Docs live at https://example.com — links render inline.",
+    "Give this one a reaction 👋",
+  ];
+  const aliceMessageIds = [];
+  for (const body of aliceBodies) {
+    aliceSocket.send({ type: "send", body });
+    const event = await aliceSocket.waitFor(
+      (item) => item.type === "message" && item.message.username === "alice",
+      `alice echo of "${body}"`,
+    );
+    aliceMessageIds.push(event.message.id);
+  }
+  aliceSocket.close();
   const [, m2, m3] = aliceMessageIds;
 
-  const bobEvents = await sendFrames(bob.token, room.id, [
-    { type: "react", message_id: m2, emoji: "🎉" },
-    { type: "react", message_id: m3, emoji: "👍" },
-    { type: "send", body: "Looking sharp — teal reads well on the dark." },
-  ]);
-  const bobMsgId = bobEvents.find((event) => event.type === "message").message.id;
-
+  // Bob stays connected: his presence keeps the "online" cluster populated, and
+  // his socket later emits the typing frame. He reacts, then posts two messages
+  // (left-aligned to Alice, so they carry the hover reaction bar).
+  const bobSocket = await openSocket(bob.token, room.id);
+  bobSocket.send({ type: "react", message_id: m2, emoji: "🎉" });
+  bobSocket.send({ type: "react", message_id: m3, emoji: "👍" });
+  for (const body of [
+    "Looking sharp — teal reads well on the dark.",
+    "Ship it — history survives a reload.",
+  ]) {
+    bobSocket.send({ type: "send", body });
+    await bobSocket.waitFor(
+      (item) => item.type === "message" && item.message.username === "bob",
+      `bob echo of "${body}"`,
+    );
+  }
   let browser;
   try {
     browser = await chromium.launch();
@@ -243,39 +355,52 @@ async function main() {
       `could not launch Chromium: ${error.message.split("\n")[0]}\n` +
         "On Linux the Playwright browser usually needs system libraries before it runs:\n" +
         "  npx playwright install --with-deps chromium\n" +
-        'then start the stack (see README "Screenshots") and retry.',
+        'then start the stack (see README "Regenerating the screenshots") and retry.',
     );
   }
 
   try {
-    // Dark theme: auth, room list with unread badge, then the live chat.  Bob
-    // marks the room read while Alice is watching so "Seen by bob" appears.
-    const dark = await newContext(browser, "dark");
-    const darkPage = await dark.newPage();
-    await captureAuth(darkPage, "01-auth-dark.png");
-    await login(darkPage, alice);
-    await captureRooms(darkPage, roomName, "03-rooms-dark.png");
-    await captureChat(darkPage, roomName, "04-chat-dark.png");
-    await api(`/rooms/${room.id}/read`, {
-      method: "POST",
+    // --- dark theme: the hero, then one capture per feature ------------------
+    const context = await newContext(browser);
+    const page = await context.newPage();
+    await captureAuth(page, "01-auth.png");
+    await login(page, alice);
+    await captureRooms(page, roomName, "02-rooms.png");
+
+    // Hero: the app in use (sidebar + conversation), before any ephemeral
+    // overlay such as the read receipt is triggered.
+    await enterRoom(page, roomName);
+    await sleep(600);
+    await page.screenshot({ path: png("00-overview.png") });
+
+    // Ephemeral overlays first, while the room is otherwise clean: hover
+    // reactions, then the composer emoji picker, then a typing indicator. The
+    // read receipt is left until last so it does not sit under every capture.
+    await captureReactionBar(page, "04-reactions.png");
+    await captureEmojiPicker(page, "05-emoji-picker.png");
+    // Close the picker so it does not bleed into the typing capture.
+    await page.keyboard.press("Escape");
+    bobSocket.send({ type: "typing" });
+    await captureTyping(page, "06-typing.png");
+    // Let the typing indicator expire (TTL ~3.5s) so it does not ride into the
+    // read-receipt capture.
+    await sleep(3_700);
+
+    // Live chat: advance Bob's cursor to Alice's last message so the
+    // "Seen by bob" receipt rides in on a live broadcast.
+    await captureReceipt(page, {
+      roomId: room.id,
       token: bob.token,
-      body: { message_id: bobMsgId },
+      messageId: m3,
+      name: "03-chat.png",
     });
-    await darkPage.locator(".message__seen", { hasText: "Seen by bob" }).waitFor();
-    await sleep(250);
-    await darkPage.screenshot({ path: png("05-chat-seen-dark.png") });
-    await dark.close();
+    await captureAbout(page, "07-about.png");
+    await context.close();
 
-    // Light theme: auth + the same chat.
-    const light = await newContext(browser, "light");
-    const lightPage = await light.newPage();
-    await captureAuth(lightPage, "02-auth-light.png");
-    await login(lightPage, alice);
-    await captureChat(lightPage, roomName, "06-chat-light.png");
-    await light.close();
-
+    bobSocket.close();
     console.log(`Saved screenshots to ${OUT_DIR}`);
   } finally {
+    bobSocket.close();
     await browser.close();
   }
 }

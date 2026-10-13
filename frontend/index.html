@@ -5,17 +5,15 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0a1113" />
-    <meta name="description" content="live-chat — real-time rooms, instant messages." />
-    <title>live-chat</title>
+    <meta name="description" content="Live Chat — real-time rooms, instant messages." />
+    <title>Live Chat</title>
     <script>
-      // Apply the stored theme before first paint to avoid a flash.
+      // Apply the stored theme before first paint to avoid a flash. The theme
+      // is scoped to the conversation panel, so the shell's theme-color stays
+      // dark regardless.
       try {
         const stored = localStorage.getItem("livechat.theme");
-        const theme = stored === "light" ? "light" : "dark";
-        document.documentElement.dataset.theme = theme;
-        document
-          .querySelector('meta[name="theme-color"]')
-          ?.setAttribute("content", theme === "light" ? "#f4f7f6" : "#0a1113");
+        document.documentElement.dataset.theme = stored === "light" ? "light" : "dark";
       } catch {
         document.documentElement.dataset.theme = "dark";
       }

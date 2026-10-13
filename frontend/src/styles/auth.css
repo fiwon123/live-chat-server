@@ -1,6 +1,7 @@
 /* ----- Auth ----- */
 
 .auth {
+  position: relative;
   min-height: 100vh;
   display: grid;
   grid-template-columns: 1.05fr 1fr;
@@ -15,6 +16,8 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: center;
+  text-align: center;
   gap: 1.4rem;
   padding: clamp(2rem, 5vw, 4rem);
   border-right: 1px solid var(--border);
@@ -85,6 +88,9 @@
 .auth__feature-copy {
   display: flex;
   flex-direction: column;
+  /* The panel is centered; keep each feature row's copy left-aligned so the
+     icon + label pairs read as a tidy list. */
+  text-align: left;
 }
 
 .auth__feature-copy strong {
@@ -102,7 +108,9 @@
 .auth__panel {
   display: grid;
   place-items: center;
-  padding: 2rem 1.25rem;
+  /* Top padding keeps the vertically-centered card clear of the absolutely
+     positioned corner controls (theme toggle + About link) on short viewports. */
+  padding: 3.4rem 1.25rem 2rem;
 }
 
 .login {

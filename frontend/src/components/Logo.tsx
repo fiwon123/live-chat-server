@@ -3,12 +3,12 @@ import { useId } from "react";
 interface LogoProps {
   /** Pixel size of the mark. */
   size?: number;
-  /** Render the "live-chat" wordmark next to the mark. */
+  /** Render the "Live Chat" wordmark next to the mark. */
   withWordmark?: boolean;
   className?: string;
 }
 
-/** The live-chat mark: a speech bubble carrying a pulse. */
+/** The Live Chat mark: a speech bubble carrying a pulse. */
 export function LogoMark({
   size = 26,
   decorative = false,
@@ -19,7 +19,7 @@ export function LogoMark({
   const gradientId = useId();
   const a11y = decorative
     ? ({ "aria-hidden": true } as const)
-    : ({ role: "img", "aria-label": "live-chat" } as const);
+    : ({ role: "img", "aria-label": "Live Chat" } as const);
 
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" focusable="false" {...a11y}>
@@ -56,7 +56,7 @@ export function Logo({ size = 26, withWordmark = true, className }: LogoProps) {
   return (
     <span className={className ? `logo ${className}` : "logo"}>
       <LogoMark size={size} decorative={withWordmark} />
-      {withWordmark ? <span className="logo__word">live-chat</span> : null}
+      {withWordmark ? <span className="logo__word">Live Chat</span> : null}
     </span>
   );
 }

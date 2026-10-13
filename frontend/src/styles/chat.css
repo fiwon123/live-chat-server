@@ -7,6 +7,9 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* Painted here (not just inherited from `.app`) so the chat-scoped light
+     theme's `--bg` shows through the feed. */
+  background: var(--bg);
 }
 
 .chat.empty {
@@ -92,11 +95,12 @@
 .feed {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
-  padding: 1rem 1rem 1.25rem;
+  gap: 0.15rem;
+  padding: 0.85rem 1rem 1rem;
 }
 
 .feed .older {
@@ -121,7 +125,7 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin: 0.9rem 0 0.35rem;
+  margin: 0.7rem 0 0.3rem;
 }
 
 .divider::before,
@@ -156,7 +160,7 @@
 }
 
 .message:not(.grouped) {
-  margin-top: 0.45rem;
+  margin-top: 0.4rem;
 }
 
 .message__body {
@@ -171,7 +175,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   border-bottom-left-radius: 4px;
-  padding: 0.4rem 0.7rem;
+  padding: 0.35rem 0.65rem;
 }
 
 .message.own .bubble {
@@ -179,6 +183,18 @@
   border-color: var(--accent-border);
   border-bottom-left-radius: var(--radius);
   border-bottom-right-radius: 4px;
+}
+
+/* Light theme: lift bubbles off the deeper feed with a soft shadow, and make
+   own messages a crisp, solid soft-teal rather than a translucent wash that
+   disappears against the light background. */
+[data-theme="light"] .message .bubble {
+  box-shadow: var(--shadow-1);
+}
+
+[data-theme="light"] .message.own .bubble {
+  background: #d3f0ea;
+  border-color: #a7ddce;
 }
 
 .message.grouped:not(.own) .message__body {
@@ -299,7 +315,11 @@
 
 .message__actions {
   position: absolute;
-  top: -0.9rem;
+  /* Fully above the message on the side away from the screen edge: right for
+     left-aligned (incoming) messages, left for right-aligned (own) messages.
+     `--below` flips it under the bubble when the message sits too close to the
+     top of the feed, so the bar is never clipped by the scroll container. */
+  bottom: calc(100% + 6px);
   right: 0.2rem;
   display: flex;
   gap: 0.1rem;
@@ -314,9 +334,35 @@
   z-index: 2;
 }
 
+/* Invisible hit bridge across the 6px gap to the bubble. The bar is only
+   interactive while `.message:hover` matches, so without this the pointer
+   would leave the message crossing that gap and the bar would vanish before
+   it could be clicked. */
+.message__actions::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 7px;
+}
+
+/* Left-side placement for right-aligned messages. Own messages render no bar
+   (issue #68), but the rule keeps the geometry symmetric should they ever. */
 .message.own .message__actions {
   right: auto;
   left: 0.2rem;
+}
+
+.message__actions--below {
+  bottom: auto;
+  top: calc(100% + 6px);
+}
+
+/* The bridge reaches up when the bar sits below the bubble. */
+.message__actions--below::after {
+  top: auto;
+  bottom: 100%;
 }
 
 .message:hover .message__actions,
@@ -456,7 +502,7 @@
   display: flex;
   align-items: flex-end;
   gap: 0.4rem;
-  padding: 0.65rem 0.9rem;
+  padding: 0.55rem 0.9rem;
   background: var(--panel);
   border-top: 1px solid var(--border);
 }

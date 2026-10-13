@@ -1,40 +1,47 @@
 import { useMemo, useState, type FormEvent, type RefObject } from "react";
 
 import type { Room } from "../api/types";
+import { VISIBLE_ROOMS, selectRooms } from "../chat/rooms";
 import { Icon } from "./Icon";
 
 export interface RoomListProps {
   rooms: Room[];
   activeRoomId: string | null;
+  /** Current user's id; rooms they created are the only deletable ones. */
+  currentUserId: string;
   loading: boolean;
   error: string | null;
   unread: Record<string, number>;
   searchRef?: RefObject<HTMLInputElement | null>;
   onEnter: (room: Room) => void;
   onCreate: (name: string) => Promise<void>;
+  onDelete: (room: Room) => Promise<void>;
 }
 
 export function RoomList({
   rooms,
   activeRoomId,
+  currentUserId,
   loading,
   error,
   unread,
   searchRef,
   onEnter,
   onCreate,
+  onDelete,
 }: RoomListProps) {
   const [name, setName] = useState("");
   const [filter, setFilter] = useState("");
   const [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const query = filter.trim().toLowerCase();
-  const filtered = useMemo(() => {
-    if (query.length === 0) {
-      return rooms;
-    }
-    return rooms.filter((room) => room.name.toLowerCase().includes(query));
-  }, [rooms, query]);
+
+  const { visible, hiddenCount, total } = useMemo(
+    () => selectRooms(rooms, unread, query, expanded),
+    [rooms, unread, query, expanded],
+  );
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -48,6 +55,21 @@ export function RoomList({
       setName("");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const confirmDelete = async (room: Room) => {
+    const ok = window.confirm(
+      `Delete #${room.name}? Its messages are removed for everyone and this cannot be undone.`,
+    );
+    if (!ok) {
+      return;
+    }
+    setDeleting(room.id);
+    try {
+      await onDelete(room);
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -119,18 +141,19 @@ export function RoomList({
         </div>
       )}
 
-      {!loading && rooms.length > 0 && filtered.length === 0 && (
-        <p className="muted rooms__none">No rooms match “{query}”.</p>
+      {!loading && rooms.length > 0 && total === 0 && (
+        <p className="muted rooms__none">No rooms match “{filter.trim()}”.</p>
       )}
 
       <ul className="rooms__list">
-        {filtered.map((room) => {
+        {visible.map((room) => {
           const count = unread[room.id] ?? 0;
+          const owned = room.created_by === currentUserId;
           return (
-            <li key={room.id}>
+            <li key={room.id} className="rooms__row">
               <button
                 type="button"
-                className={room.id === activeRoomId ? "active" : ""}
+                className={`rooms__enter${room.id === activeRoomId ? " active" : ""}`}
                 onClick={() => onEnter(room)}
               >
                 <Icon name="hash" size={16} className="rooms__hash" />
@@ -153,10 +176,33 @@ export function RoomList({
                 {!room.member && <span className="tag">join</span>}
                 {count > 0 && <span className="visually-hidden">{`${count} unread`}</span>}
               </button>
+              {owned && (
+                <button
+                  type="button"
+                  className="rooms__delete"
+                  onClick={() => void confirmDelete(room)}
+                  disabled={deleting === room.id}
+                  aria-label={`Delete room ${room.name}`}
+                  title="Delete room"
+                >
+                  <Icon name="trash" size={15} />
+                </button>
+              )}
             </li>
           );
         })}
       </ul>
+
+      {total > VISIBLE_ROOMS && (
+        <button
+          type="button"
+          className="rooms__more"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? "Show fewer" : `Show ${hiddenCount} more`}
+        </button>
+      )}
     </aside>
   );
 }

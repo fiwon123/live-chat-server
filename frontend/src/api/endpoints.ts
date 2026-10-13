@@ -54,6 +54,11 @@ export const api = {
     );
   },
 
+  /** Delete a room; the server allows this only for the room's creator. */
+  deleteRoom(token: string, roomId: string) {
+    return request<void>(`/rooms/${roomId}`, { method: "DELETE", token });
+  },
+
   joinRoom(token: string, roomId: string) {
     return request<void>(`/rooms/${roomId}/join`, { method: "POST", token });
   },

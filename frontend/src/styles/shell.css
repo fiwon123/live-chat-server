@@ -4,6 +4,7 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background: var(--bg);
 }
 
@@ -141,8 +142,15 @@
   gap: 0.2rem;
 }
 
-.rooms__list li button {
-  width: 100%;
+.rooms__row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.1rem;
+}
+
+.rooms__enter {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -158,11 +166,11 @@
     border-color var(--dur) var(--ease);
 }
 
-.rooms__list li button:hover {
+.rooms__enter:hover {
   background: var(--panel-hover);
 }
 
-.rooms__list li button.active {
+.rooms__enter.active {
   background: var(--accent-soft);
   border-color: var(--accent-border);
 }
@@ -172,8 +180,65 @@
   flex-shrink: 0;
 }
 
-.rooms__list li button.active .rooms__hash,
-.rooms__list li button:hover .rooms__hash {
+.rooms__enter.active .rooms__hash,
+.rooms__enter:hover .rooms__hash {
+  color: var(--accent);
+}
+
+/* Owner-only delete control: hidden until the row is hovered/focused so the
+   list stays calm, but always shown where hover does not exist (touch). */
+.rooms__delete {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  background: transparent;
+  color: var(--faint);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.rooms__row:hover .rooms__delete,
+.rooms__row:focus-within .rooms__delete {
+  opacity: 1;
+}
+
+.rooms__delete:hover {
+  color: var(--bad);
+  background: var(--bad-soft);
+}
+
+.rooms__delete:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (hover: none) {
+  .rooms__delete {
+    opacity: 1;
+  }
+}
+
+.rooms__more {
+  align-self: flex-start;
+  margin-top: 0.1rem;
+  padding: 0.3rem 0.5rem;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: color var(--dur) var(--ease);
+}
+
+.rooms__more:hover {
   color: var(--accent);
 }
 

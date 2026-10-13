@@ -61,26 +61,65 @@ pub struct RoomService {
     messages: Messages,
     reactions: Reactions,
     reads: Reads,
+    /// How many rooms one user may own; enforced on create.
+    max_rooms_per_user: i64,
 }
 
 impl RoomService {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: PgPool, max_rooms_per_user: i64) -> Self {
         Self {
             rooms: Rooms::new(pool.clone()),
             memberships: RoomMemberships::new(pool.clone()),
             messages: Messages::new(pool.clone()),
             reactions: Reactions::new(pool.clone()),
             reads: Reads::new(pool),
+            max_rooms_per_user,
         }
     }
 
     /// Create a room; the creator becomes its first member (atomic in
     /// storage — a room row can never exist without the creator's membership).
+    ///
+    /// Enforces the per-user room cap: `409 Conflict` once the creator owns
+    /// `max_rooms_per_user` rooms. The cap check is part of the insert, so
+    /// concurrent creates can't sneak past it.
     pub async fn create(&self, user_id: Uuid, name: &str) -> Result<Room, AppError> {
         let name = validate_room_name(name)?;
-        let room = self.rooms.create(&name, user_id).await?;
+        let room = self
+            .rooms
+            .create_within_limit(&name, user_id, self.max_rooms_per_user)
+            .await?
+            .ok_or_else(|| {
+                AppError::Conflict(format!(
+                    "you can create at most {} rooms",
+                    self.max_rooms_per_user
+                ))
+            })?;
         tracing::info!(room_id = %room.id, user_id = %user_id, "room created");
         Ok(room)
+    }
+
+    /// Delete a room and everything scoped to it. Only the room's creator may
+    /// delete it: `404` for an unknown room, `403` for a non-owner.
+    pub async fn delete(&self, room_id: Uuid, user_id: Uuid) -> Result<(), AppError> {
+        let room = self
+            .rooms
+            .find_by_id(room_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("room not found".to_string()))?;
+        if room.created_by != user_id {
+            return Err(AppError::Forbidden(
+                "only the room's creator can delete it".to_string(),
+            ));
+        }
+        // The room could vanish between the check above and this delete (a
+        // concurrent duplicate delete); report that as the documented 404
+        // rather than a 204 for a room that was already gone.
+        if !self.rooms.delete(room_id).await? {
+            return Err(AppError::NotFound("room not found".to_string()));
+        }
+        tracing::info!(room_id = %room_id, user_id = %user_id, "room deleted");
+        Ok(())
     }
 
     /// All rooms, annotated with the caller's membership status, unread total,

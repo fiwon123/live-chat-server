@@ -1,11 +1,15 @@
+import type { Theme } from "../hooks/useTheme";
 import { Icon, type IconName } from "./Icon";
 import { LoginForm } from "./LoginForm";
 import { Logo } from "./Logo";
+import { ThemeToggle } from "./ThemeToggle";
 
 interface AuthScreenProps {
   busy: boolean;
   error: string | null;
   onSubmit: (mode: "login" | "register", username: string, password: string) => void;
+  theme: Theme;
+  onToggleTheme: () => void;
 }
 
 const FEATURES: { icon: IconName; title: string; text: string }[] = [
@@ -26,9 +30,16 @@ const FEATURES: { icon: IconName; title: string; text: string }[] = [
   },
 ];
 
-export function AuthScreen({ busy, error, onSubmit }: AuthScreenProps) {
+export function AuthScreen({ busy, error, onSubmit, theme, onToggleTheme }: AuthScreenProps) {
   return (
     <main className="auth">
+      <div className="auth__corner">
+        <ThemeToggle theme={theme} onToggle={onToggleTheme} className="auth__theme" />
+        <a className="auth__about" href="#/about">
+          <Icon name="info" size={15} />
+          About this project
+        </a>
+      </div>
       <section className="auth__brand">
         <div className="auth__glow" aria-hidden="true" />
         <Logo size={32} />

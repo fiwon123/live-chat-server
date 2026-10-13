@@ -3,8 +3,8 @@
 //! instance A is delivered to a client connected to instance B (and vice
 //! versa), exactly once, without the local channel double-delivering.
 //!
-//! Requires a reachable Redis (`REDIS_URL`); skips gracefully otherwise, like
-//! the DB-backed tests.
+//! Requires a reachable Redis (`REDIS_URL`); the test skips when it is unset.
+//! The database is isolated per test by `#[sqlx::test]`.
 
 mod common;
 
@@ -29,18 +29,19 @@ struct RunningServer {
     app: TestApp,
 }
 
-/// Build a Redis-backed app and serve it on `127.0.0.1:0`; `None` when no DB
-/// is reachable.
-async fn spawn_server(redis: RedisPubSub) -> Option<RunningServer> {
-    let app = test_app_with_redis(redis).await?;
-    let listener = TcpListener::bind("127.0.0.1:0").await.ok()?;
-    let addr = listener.local_addr().ok()?;
+/// Build a Redis-backed app and serve it on `127.0.0.1:0`.
+async fn spawn_server(pool: sqlx::PgPool, redis: RedisPubSub) -> RunningServer {
+    let app = test_app_with_redis(pool, redis);
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind ephemeral port");
+    let addr = listener.local_addr().expect("read local addr");
     let router = app.router.clone();
     // Detached: the task lives until the test runtime shuts down.
     tokio::spawn(async move {
         let _ = axum::serve(listener, router).await;
     });
-    Some(RunningServer { addr, app })
+    RunningServer { addr, app }
 }
 
 async fn connect_ws(server: &RunningServer, token: &str, room_id: &str) -> WsStream {
@@ -95,8 +96,8 @@ async fn assert_no_event(stream: &mut WsStream, within: Duration) {
     }
 }
 
-#[tokio::test]
-async fn redis_pubsub_fans_out_across_instances_without_double_delivery() {
+#[sqlx::test]
+async fn redis_pubsub_fans_out_across_instances_without_double_delivery(pool: sqlx::PgPool) {
     let url = match std::env::var("REDIS_URL") {
         Ok(url) if !url.is_empty() => url,
         _ => {
@@ -121,12 +122,8 @@ async fn redis_pubsub_fans_out_across_instances_without_double_delivery() {
         }
     };
 
-    let Some(server_a) = spawn_server(redis_a).await else {
-        return;
-    };
-    let Some(server_b) = spawn_server(redis_b).await else {
-        return;
-    };
+    let server_a = spawn_server(pool.clone(), redis_a).await;
+    let server_b = spawn_server(pool.clone(), redis_b).await;
 
     // Alice registers and creates the room on instance A; Bob registers and
     // joins through instance B (both hit the same database).

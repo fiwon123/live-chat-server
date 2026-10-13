@@ -2,7 +2,7 @@
 
 COMPONENTS := backend frontend
 
-.PHONY: help check clean dev-up dev-down dev-shell dev-opencode dev-opencode-auto dev-log dev-build reset preflight screenshots
+.PHONY: help check clean dev-up dev-down dev-shell dev-opencode dev-opencode-auto dev-log dev-build reset preflight screenshots db-clean
 
 OPENCODE_ARGS ?=
 
@@ -47,6 +47,9 @@ dev-build: preflight
 
 reset:
 	@docker compose down -v
+
+db-clean: ## Delete all app data from the dev database (destructive)
+	@docker compose exec -T db sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -c "TRUNCATE users, rooms, room_memberships, messages, message_reactions, message_reads RESTART IDENTITY CASCADE;"'
 
 shell: dev-shell
 opencode: dev-opencode

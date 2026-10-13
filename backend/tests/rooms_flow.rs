@@ -1,17 +1,17 @@
 //! End-to-end room, membership, and history flow over the real router.
 //!
-//! These tests need a database; when none is reachable they skip.
+//! Each test runs against its own isolated database (created and dropped by
+//! `#[sqlx::test]`), so the suite never touches the development database and
+//! can assert on global state. A reachable `DATABASE_URL` is required.
 
 mod common;
 
 use axum::http::StatusCode;
-use common::{register_user, request, test_app};
+use common::{MAX_ROOMS_PER_USER, register_user, request, test_app};
 
-#[tokio::test]
-async fn create_room_auto_joins_creator() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn create_room_auto_joins_creator(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
 
     let (status, body) = request(
@@ -29,11 +29,9 @@ async fn create_room_auto_joins_creator() {
     assert!(body["id"].as_str().is_some());
 }
 
-#[tokio::test]
-async fn create_room_rejects_empty_and_long_names() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn create_room_rejects_empty_and_long_names(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
 
     let (empty, _) = request(
@@ -57,11 +55,9 @@ async fn create_room_rejects_empty_and_long_names() {
     assert_eq!(long, StatusCode::BAD_REQUEST);
 }
 
-#[tokio::test]
-async fn rooms_require_auth() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn rooms_require_auth(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (status, _) = request(
         &app,
         "POST",
@@ -73,11 +69,9 @@ async fn rooms_require_auth() {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
-#[tokio::test]
-async fn list_rooms_shows_membership_flag() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn list_rooms_shows_membership_flag(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
     let (other, _) = register_user(&app).await;
 
@@ -114,11 +108,9 @@ async fn list_rooms_shows_membership_flag() {
     assert_eq!(theirs["member"], false);
 }
 
-#[tokio::test]
-async fn get_room_and_404() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn get_room_and_404(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
     let (status, body) = request(
         &app,
@@ -154,11 +146,9 @@ async fn get_room_and_404() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
-#[tokio::test]
-async fn join_and_leave_are_idempotent() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn join_and_leave_are_idempotent(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
     let (joiner, _) = register_user(&app).await;
 
@@ -219,11 +209,9 @@ async fn join_and_leave_are_idempotent() {
     assert_eq!(left["member"], false);
 }
 
-#[tokio::test]
-async fn history_requires_membership() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn history_requires_membership(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
     let (outsider, _) = register_user(&app).await;
 
@@ -261,11 +249,9 @@ async fn history_requires_membership() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
-#[tokio::test]
-async fn history_returns_seeded_messages_with_authors() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn history_returns_seeded_messages_with_authors(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, username) = register_user(&app).await;
 
     let (status, body) = request(
@@ -335,11 +321,9 @@ async fn history_returns_seeded_messages_with_authors() {
     assert_eq!(older[0]["body"], "hello 0");
 }
 
-#[tokio::test]
-async fn unknown_cursor_yields_empty_page() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn unknown_cursor_yields_empty_page(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
     let (status, body) = request(
         &app,
@@ -365,4 +349,393 @@ async fn unknown_cursor_yields_empty_page() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+#[sqlx::test]
+async fn create_room_enforces_the_per_user_cap(pool: sqlx::PgPool) {
+    let app = test_app(pool);
+    let (token, username) = register_user(&app).await;
+
+    // Room names are not unique, so scope every name to the unique username
+    // purely so a failure prints an easy-to-scan list.
+    let prefix = format!("{username}-capped");
+
+    // The isolated database starts empty, so a fresh user owns nothing and
+    // exactly `MAX_ROOMS_PER_USER` creates succeed.
+    for i in 0..MAX_ROOMS_PER_USER {
+        let (status, body) = request(
+            &app,
+            "POST",
+            "/api/rooms",
+            Some(serde_json::json!({ "name": format!("{prefix}-{i}") })),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "create {i} failed: {body}");
+    }
+
+    let (status, body) = request(
+        &app,
+        "POST",
+        "/api/rooms",
+        Some(serde_json::json!({ "name": format!("{prefix}-one-too-many") })),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("at most"),
+        "cap error should be explicit: {body}"
+    );
+
+    // The rejected create must not have left a half-made room behind.
+    let (_, list) = request(&app, "GET", "/api/rooms", None, Some(&token)).await;
+    let owned = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|room| {
+            room["name"]
+                .as_str()
+                .is_some_and(|name| name.starts_with(&prefix))
+        })
+        .count();
+    assert_eq!(owned as i64, MAX_ROOMS_PER_USER, "list: {list}");
+}
+
+#[sqlx::test]
+async fn concurrent_creates_cannot_exceed_the_cap(pool: sqlx::PgPool) {
+    let app = test_app(pool);
+    let (token, username) = register_user(&app).await;
+    let prefix = format!("{username}-racy");
+
+    // Fire more concurrent creates than the cap allows. Without the per-user
+    // advisory lock (a bare `INSERT ... WHERE count(*) < n`), READ COMMITTED
+    // snapshots let several slip through; with it, exactly the cap succeeds.
+    let attempts = MAX_ROOMS_PER_USER + 5;
+    let futures = (0..attempts).map(|i| {
+        let name = format!("{prefix}-{i}");
+        let token = token.clone();
+        let app = &app;
+        async move {
+            request(
+                app,
+                "POST",
+                "/api/rooms",
+                Some(serde_json::json!({ "name": name })),
+                Some(&token),
+            )
+            .await
+            .0
+        }
+    });
+    let statuses = futures_util::future::join_all(futures).await;
+
+    let created = statuses
+        .iter()
+        .filter(|status| **status == StatusCode::CREATED)
+        .count() as i64;
+    assert_eq!(
+        created, MAX_ROOMS_PER_USER,
+        "exactly the cap should be created, got {statuses:?}"
+    );
+    assert_eq!(
+        statuses
+            .iter()
+            .filter(|status| **status == StatusCode::CONFLICT)
+            .count() as i64,
+        attempts - MAX_ROOMS_PER_USER,
+    );
+}
+
+#[sqlx::test]
+async fn cap_is_per_user_not_global(pool: sqlx::PgPool) {
+    let app = test_app(pool);
+    let (first, _) = register_user(&app).await;
+    let (second, _) = register_user(&app).await;
+
+    // First user fills their quota.
+    for i in 0..MAX_ROOMS_PER_USER {
+        let (status, _) = request(
+            &app,
+            "POST",
+            "/api/rooms",
+            Some(serde_json::json!({ "name": format!("first-{i}") })),
+            Some(&first),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+    }
+    let (status, _) = request(
+        &app,
+        "POST",
+        "/api/rooms",
+        Some(serde_json::json!({ "name": "first-over" })),
+        Some(&first),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // Second user still has their own quota.
+    let (status, _) = request(
+        &app,
+        "POST",
+        "/api/rooms",
+        Some(serde_json::json!({ "name": "second-room" })),
+        Some(&second),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+}
+
+#[sqlx::test]
+async fn owner_can_delete_a_room(pool: sqlx::PgPool) {
+    let app = test_app(pool);
+    let (token, _) = register_user(&app).await;
+    let (status, body) = request(
+        &app,
+        "POST",
+        "/api/rooms",
+        Some(serde_json::json!({ "name": "doomed" })),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let room_id = body["id"].as_str().unwrap().to_string();
+
+    let (status, _) = request(
+        &app,
+        "DELETE",
+        &format!("/api/rooms/{room_id}"),
+        None,
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // Gone via get, and gone from the listing.
+    let (status, _) = request(
+        &app,
+        "GET",
+        &format!("/api/rooms/{room_id}"),
+        None,
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let (_, list) = request(&app, "GET", "/api/rooms", None, Some(&token)).await;
+    assert!(
+        list.as_array()
+            .unwrap()
+            .iter()
+            .all(|room| room["id"] != room_id),
+        "deleted room still listed: {list}"
+    );
+
+    // Deleting again is a 404.
+    let (status, _) = request(
+        &app,
+        "DELETE",
+        &format!("/api/rooms/{room_id}"),
+        None,
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[sqlx::test]
+async fn deleting_a_room_frees_a_cap_slot(pool: sqlx::PgPool) {
+    let app = test_app(pool);
+    let (token, _) = register_user(&app).await;
+
+    let mut room_ids = Vec::new();
+    for i in 0..MAX_ROOMS_PER_USER {
+        let (status, body) = request(
+            &app,
+            "POST",
+            "/api/rooms",
+            Some(serde_json::json!({ "name": format!("slot-{i}") })),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        room_ids.push(body["id"].as_str().unwrap().to_string());
+    }
+
+    // At the cap: another create is rejected.
+    let (status, _) = request(
+        &app,
+        "POST",
+        "/api/rooms",
+        Some(serde_json::json!({ "name": "over" })),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // Free a slot, then the same create succeeds.
+    let (status, _) = request(
+        &app,
+        "DELETE",
+        &format!("/api/rooms/{}", room_ids[0]),
+        None,
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let (status, _) = request(
+        &app,
+        "POST",
+        "/api/rooms",
+        Some(serde_json::json!({ "name": "after-delete" })),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+}
+
+#[sqlx::test]
+async fn non_owner_cannot_delete_a_room(pool: sqlx::PgPool) {
+    let app = test_app(pool);
+    let (owner, _) = register_user(&app).await;
+    let (intruder, _) = register_user(&app).await;
+
+    let (status, body) = request(
+        &app,
+        "POST",
+        "/api/rooms",
+        Some(serde_json::json!({ "name": "owned" })),
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let room_id = body["id"].as_str().unwrap().to_string();
+
+    // Even a member cannot delete a room they did not create.
+    let (status, _) = request(
+        &app,
+        "POST",
+        &format!("/api/rooms/{room_id}/join"),
+        None,
+        Some(&intruder),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let (status, _) = request(
+        &app,
+        "DELETE",
+        &format!("/api/rooms/{room_id}"),
+        None,
+        Some(&intruder),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Still there for the owner.
+    let (status, _) = request(
+        &app,
+        "GET",
+        &format!("/api/rooms/{room_id}"),
+        None,
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[sqlx::test]
+async fn delete_unknown_room_is_not_found(pool: sqlx::PgPool) {
+    let app = test_app(pool);
+    let (token, _) = register_user(&app).await;
+    let (status, _) = request(
+        &app,
+        "DELETE",
+        "/api/rooms/00000000-0000-0000-0000-000000000000",
+        None,
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[sqlx::test]
+async fn deleting_a_room_requires_auth(pool: sqlx::PgPool) {
+    let app = test_app(pool);
+    let (token, _) = register_user(&app).await;
+    let (_, body) = request(
+        &app,
+        "POST",
+        "/api/rooms",
+        Some(serde_json::json!({ "name": "guarded" })),
+        Some(&token),
+    )
+    .await;
+    let room_id = body["id"].as_str().unwrap().to_string();
+
+    let (status, _) = request(&app, "DELETE", &format!("/api/rooms/{room_id}"), None, None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test]
+async fn deleting_a_room_cascades_to_its_messages(pool: sqlx::PgPool) {
+    let app = test_app(pool);
+    let (token, _) = register_user(&app).await;
+    let (status, body) = request(
+        &app,
+        "POST",
+        "/api/rooms",
+        Some(serde_json::json!({ "name": "with-history" })),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let room_id = body["id"].as_str().unwrap().to_string();
+    let room_uuid = uuid::Uuid::parse_str(&room_id).unwrap();
+    let user_id = uuid::Uuid::parse_str(body["created_by"].as_str().unwrap()).unwrap();
+
+    // Seed a message and a read cursor directly so the cascade has rows to hit.
+    sqlx::query("INSERT INTO messages (room_id, user_id, body) VALUES ($1, $2, $3)")
+        .bind(room_uuid)
+        .bind(user_id)
+        .bind("to be deleted")
+        .execute(&app.pool)
+        .await
+        .unwrap();
+
+    let (status, _) = request(
+        &app,
+        "DELETE",
+        &format!("/api/rooms/{room_id}"),
+        None,
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // No orphaned rows: the FK prevents them, so any residue would surface as
+    // a query error rather than a count.
+    let remaining: i64 = sqlx::query_scalar("SELECT count(*) FROM messages WHERE room_id = $1")
+        .bind(room_uuid)
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(remaining, 0, "messages should cascade away with the room");
+
+    let memberships: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM room_memberships WHERE room_id = $1")
+            .bind(room_uuid)
+            .fetch_one(&app.pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        memberships, 0,
+        "memberships should cascade away with the room"
+    );
 }
