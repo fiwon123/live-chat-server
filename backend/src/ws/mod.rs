@@ -26,7 +26,7 @@ use uuid::Uuid;
 use crate::error::AppError;
 use crate::routes::rooms::MessageResponse;
 use crate::storage::reactions::MAX_EMOJI_LEN;
-use crate::storage::{Messages, Reactions, RoomMemberships};
+use crate::storage::{Messages, Reactions, RoomMemberships, Rooms};
 
 /// Maximum length of a chat message body (in chars, after trimming and
 /// newline normalization).
@@ -67,6 +67,9 @@ pub enum WsOutgoing {
     },
     /// A member marked messages read up to `message_id` (ephemeral receipt).
     Read { message_id: Uuid, user: UserRef },
+    /// The room was deleted by its creator. Clients must drop it and must not
+    /// reconnect to it (the room no longer exists).
+    RoomDeleted { room_id: Uuid },
     /// A protocol or validation error; the connection stays open.
     Error { message: String },
 }
@@ -127,6 +130,7 @@ pub async fn run_session(
     // closed the moment the next message arrives, instead of silently
     // receiving room content forever.
     let send_memberships = RoomMemberships::new(pool.clone());
+    let send_rooms = Rooms::new(pool.clone());
     let mut send_task = tokio::spawn(async move {
         loop {
             tokio::select! {
@@ -134,7 +138,21 @@ pub async fn run_session(
                     RecvOutcome::Event(event @ WsOutgoing::Message { .. }) => {
                         match send_memberships.is_member(room_id, user_id).await {
                             Ok(true) => {}
-                            Ok(false) => break, // membership revoked: close the session
+                            Ok(false) => {
+                                // Membership is gone: either the user left, or
+                                // the room was deleted. If the room is gone, a
+                                // queued `room_deleted` behind this message
+                                // would be swallowed by the break below, so
+                                // relay it before closing.
+                                if matches!(send_rooms.find_by_id(room_id).await, Ok(None)) {
+                                    let _ = send_json(
+                                        &mut sender,
+                                        &WsOutgoing::RoomDeleted { room_id },
+                                    )
+                                    .await;
+                                }
+                                break; // membership revoked: close the session
+                            }
                             Err(err) => {
                                 tracing::error!(error = ?err, "receive-side membership check failed");
                                 break;

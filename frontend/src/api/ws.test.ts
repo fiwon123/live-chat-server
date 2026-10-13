@@ -92,6 +92,11 @@ describe("decodeServerEvent", () => {
     });
   });
 
+  it("passes a room_deleted frame through with its room id", () => {
+    const raw = JSON.stringify({ type: "room_deleted", room_id: "r1" });
+    expect(decodeServerEvent(raw)).toEqual({ type: "room_deleted", room_id: "r1" });
+  });
+
   it("throws on malformed JSON so callers can ignore the frame", () => {
     expect(() => decodeServerEvent("not json")).toThrow();
   });

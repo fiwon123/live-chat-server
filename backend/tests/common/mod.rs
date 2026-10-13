@@ -66,6 +66,7 @@ pub async fn test_app() -> Option<TestApp> {
 
     let mut config = Config::from_env();
     config.jwt_secret = "integration-test-secret".to_string();
+    config.max_rooms_per_user = MAX_ROOMS_PER_USER;
     let router = build_router(AppState::new(pool.clone(), config));
 
     Some(TestApp { router, pool })
@@ -78,6 +79,7 @@ pub async fn test_app_with_redis(redis: live_chat_server::ws::RedisPubSub) -> Op
 
     let mut config = Config::from_env();
     config.jwt_secret = "integration-test-secret".to_string();
+    config.max_rooms_per_user = MAX_ROOMS_PER_USER;
     let router = build_router(AppState::with_redis(pool.clone(), config, redis));
 
     Some(TestApp { router, pool })
@@ -90,6 +92,9 @@ pub fn unique_username() -> String {
 
 /// The strong default password used by tests.
 pub const PASSWORD: &str = "correct horse battery staple";
+
+/// Room cap pinned for tests, independent of any ambient `MAX_ROOMS_PER_USER`.
+pub const MAX_ROOMS_PER_USER: i64 = 5;
 
 /// Send a JSON request through the router and decode the JSON response.
 pub async fn request(

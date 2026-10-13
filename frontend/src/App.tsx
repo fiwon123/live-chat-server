@@ -35,12 +35,47 @@ function App() {
   const { toasts, push, dismiss } = useToasts();
 
   const token = auth.token ?? "";
-  const chat = useChatRoom(token, activeRoom?.id ?? "");
   const roomSearchRef = useRef<HTMLInputElement>(null);
   const baselineRef = useRef<string | null>(null);
   const readTimerRef = useRef<number | null>(null);
   const readAtRef = useRef(0);
   const lastVisibleMessageRef = useRef<string | null>(null);
+  // Mirror of `rooms`, readable from callbacks without re-subscribing them.
+  const roomsRef = useRef<Room[]>(rooms);
+  // Room ids we asked the server to delete, so the `room_deleted` echo doesn't
+  // also fire the "someone deleted a room" toast (the two can race).
+  const pendingDeleteRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    roomsRef.current = rooms;
+  }, [rooms]);
+
+  /** Drop a room from local state (list + unread badge); deselect it if active. */
+  const removeRoomLocally = useCallback(
+    (roomId: string) => {
+      roomsRef.current = roomsRef.current.filter((room) => room.id !== roomId);
+      setRooms(roomsRef.current);
+      markRead(roomId);
+      setActiveRoom((current) => (current?.id === roomId ? null : current));
+    },
+    [markRead],
+  );
+
+  /** The server says a room is gone — either we deleted it or a member told us. */
+  const handleRoomDeleted = useCallback(
+    (roomId: string) => {
+      // The owner's own delete already reacted locally; don't toast twice.
+      const selfInitiated = pendingDeleteRef.current.delete(roomId);
+      const wasListed = roomsRef.current.some((room) => room.id === roomId);
+      removeRoomLocally(roomId);
+      if (wasListed && !selfInitiated) {
+        push("info", "A room you were in was deleted");
+      }
+    },
+    [removeRoomLocally, push],
+  );
+
+  const chat = useChatRoom(token, activeRoom?.id ?? "", handleRoomDeleted);
 
   /** Smallest gap between message-level read calls (mark-all is never gated). */
   const READ_THROTTLE_MS = 800;
@@ -188,6 +223,9 @@ function App() {
     setRoomsError(null);
     try {
       const rooms = await api.listRooms(token);
+      // Update the mirror immediately so a `room_deleted` frame landing in the
+      // same tick filters against the fresh list, not the previous one.
+      roomsRef.current = rooms;
       setRooms(rooms);
       sync(rooms);
     } catch (error) {
@@ -261,6 +299,32 @@ function App() {
     }
   }, [token, activeRoom, refreshRooms]);
 
+  const deleteRoom = useCallback(
+    async (room: Room) => {
+      if (!token) {
+        return;
+      }
+      pendingDeleteRef.current.add(room.id);
+      try {
+        await api.deleteRoom(token, room.id);
+        // The echo may or may not have arrived by now; clear the marker either
+        // way so it cannot accumulate. A late echo then sees the room already
+        // gone (`wasListed` false) and stays quiet.
+        pendingDeleteRef.current.delete(room.id);
+        // Remove locally first (and synchronously) so the `room_deleted` frame
+        // the server sends back isn't treated as a surprise we must toast.
+        removeRoomLocally(room.id);
+        push("info", `Deleted #${room.name}`);
+      } catch (error) {
+        pendingDeleteRef.current.delete(room.id);
+        const message = messageOf(error);
+        setRoomsError(message);
+        push("error", message);
+      }
+    },
+    [token, removeRoomLocally, push],
+  );
+
   if (auth.status === "loading") {
     return (
       <div className="splash" role="status">
@@ -325,6 +389,7 @@ function App() {
         <RoomList
           rooms={rooms}
           activeRoomId={activeRoom?.id ?? null}
+          currentUserId={auth.user.id}
           loading={roomsLoading}
           error={roomsError}
           unread={unread}
@@ -334,6 +399,7 @@ function App() {
             void enterRoom(room);
           }}
           onCreate={createRoom}
+          onDelete={deleteRoom}
         />
 
         {activeRoom !== null ? (

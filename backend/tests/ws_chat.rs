@@ -831,3 +831,67 @@ async fn read_receipts_broadcast_within_room_only() {
     // Carol (different room) must not see the receipt.
     assert_no_event(&mut carol, Duration::from_millis(300)).await;
 }
+
+#[tokio::test]
+async fn deleting_a_room_notifies_members_and_no_one_else() {
+    let Some(server) = spawn_server().await else {
+        return;
+    };
+
+    let (alice_token, _) = register_user(&server.app).await;
+    let (bob_token, _) = register_user(&server.app).await;
+    let (carol_token, _) = register_user(&server.app).await;
+
+    let (room_a, _) = create_room(&server.app, &alice_token, "delete-a").await;
+    let (room_b, _) = create_room(&server.app, &carol_token, "delete-b").await;
+
+    let (status, _) = request(
+        &server.app,
+        "POST",
+        &format!("/api/rooms/{room_a}/join"),
+        None,
+        Some(&bob_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // Drain each client's own `joined` so the streams are clear.
+    let mut alice = connect_ws(&server, &alice_token, &room_a).await;
+    let _ = next_event_of_type(&mut alice, "presence").await;
+    let mut bob = connect_ws(&server, &bob_token, &room_a).await;
+    let _ = next_event_of_type(&mut bob, "presence").await;
+    let _ = next_event_of_type(&mut alice, "presence").await;
+    let mut carol = connect_ws(&server, &carol_token, &room_b).await;
+    let _ = next_event_of_type(&mut carol, "presence").await;
+
+    // The owner deletes room A over HTTP.
+    let (status, _) = request(
+        &server.app,
+        "DELETE",
+        &format!("/api/rooms/{room_a}"),
+        None,
+        Some(&alice_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // Every member — the owner included — is told the room is gone.
+    for stream in [&mut alice, &mut bob] {
+        let event = next_event_of_type(stream, "room_deleted").await;
+        assert_eq!(event["room_id"], room_a);
+    }
+
+    // A client in another room is unaffected.
+    assert_no_event(&mut carol, Duration::from_millis(300)).await;
+
+    // The room is really gone: history now 404s for a (former) member.
+    let (status, _) = request(
+        &server.app,
+        "GET",
+        &format!("/api/rooms/{room_a}/messages"),
+        None,
+        Some(&bob_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

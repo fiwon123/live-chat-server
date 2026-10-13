@@ -62,6 +62,18 @@ describe("api", () => {
     expect(headers.Authorization).toBe("Bearer jwt-token");
   });
 
+  it("deletes a room with DELETE and the bearer token", async () => {
+    const fetchMock = mockFetch(new Response(null, { status: 204 }));
+
+    await expect(api.deleteRoom("jwt", "room-1")).resolves.toBeUndefined();
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("/api/rooms/room-1");
+    expect(init?.method).toBe("DELETE");
+    const headers = init?.headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer jwt");
+  });
+
   it("surfaces the backend { error } message", async () => {
     vi.stubGlobal(
       "fetch",

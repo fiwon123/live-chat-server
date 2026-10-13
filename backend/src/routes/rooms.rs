@@ -249,6 +249,27 @@ pub async fn mark_room_read(
     }))
 }
 
+/// `DELETE /api/rooms/{id}`
+///
+/// Deletes a room and everything scoped to it (memberships, messages,
+/// reactions, read cursors). Only the room's creator may delete it. Every
+/// session currently in the room is told via a `room_deleted` frame so its
+/// client can drop the room instead of reconnecting to a room that no longer
+/// exists.
+pub async fn delete_room(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(room_id): Path<Uuid>,
+) -> Result<StatusCode, AppError> {
+    let service = room_service(&state);
+    service.delete(room_id, user.id).await?;
+    state
+        .registry
+        .send(room_id, WsOutgoing::RoomDeleted { room_id })
+        .await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// `GET /api/rooms/{id}/messages`
 pub async fn room_history(
     State(state): State<AppState>,
@@ -278,14 +299,14 @@ pub async fn room_history(
 }
 
 fn room_service(state: &AppState) -> RoomService {
-    RoomService::new(state.pool.clone())
+    RoomService::new(state.pool.clone(), state.config.max_rooms_per_user)
 }
 
 /// Routes nested under `/api`.
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/rooms", get(list_rooms).post(create_room))
-        .route("/rooms/{id}", get(get_room))
+        .route("/rooms/{id}", get(get_room).delete(delete_room))
         .route("/rooms/{id}/join", post(join_room))
         .route("/rooms/{id}/leave", post(leave_room))
         .route("/rooms/{id}/read", post(mark_room_read))
