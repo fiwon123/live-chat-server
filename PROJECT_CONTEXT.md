@@ -65,7 +65,7 @@ frontend/   # React + TypeScript client (Vite): pages, components, API/WS client
 
 - **Install**: backend `cargo fetch`; frontend `npm ci` (from `frontend/`)
 - **Dev server**: backend `cargo run` (reads `DATABASE_URL`, `PORT`); frontend `npm run dev`
-- **Tests**: backend `cargo test` (unit + integration; DB-backed tests may skip if DB unavailable)
+- **Tests**: backend `cargo test` (unit + integration; DB-backed tests use `#[sqlx::test]` for a fresh, isolated database per test and require a reachable `DATABASE_URL`)
 - **Lint**: backend `cargo clippy --all-targets -- -D warnings`; frontend `npm run lint`
 - **Format**: backend `cargo fmt` / `cargo fmt --check`; frontend `npm run format` / `format:check`
 - **Build**: backend `cargo build`; frontend `npm run build`

@@ -1,7 +1,9 @@
 //! Read-state flow over the real router: unread counts, cursor advancement,
 //! membership gating, and the `POST /api/rooms/{id}/read` validations.
 //!
-//! These tests need a database; when none is reachable they skip.
+//! Each test runs against its own isolated database (created and dropped by
+//! `#[sqlx::test]`), so the suite never touches the development database and
+//! can assert on global state. A reachable `DATABASE_URL` is required.
 
 mod common;
 
@@ -83,11 +85,9 @@ async fn room_from_list(app: &TestApp, token: &str, room_id: &str) -> serde_json
         .expect("room should be listed")
 }
 
-#[tokio::test]
-async fn unread_count_tracks_cursor_and_new_messages() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn unread_count_tracks_cursor_and_new_messages(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user_and_id(&app).await;
     let (room_id, _) = create_room(&app, &token, "unread").await;
     let (_, author_id) = register_user_and_id(&app).await;
@@ -144,11 +144,9 @@ async fn unread_count_tracks_cursor_and_new_messages() {
     assert_eq!(listed["unread_count"], 1, "own message must not count");
 }
 
-#[tokio::test]
-async fn mark_read_at_a_specific_message_leaves_newer_unread() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn mark_read_at_a_specific_message_leaves_newer_unread(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user_and_id(&app).await;
     let (room_id, _) = create_room(&app, &token, "cursor").await;
     let (_, author_id) = register_user_and_id(&app).await;
@@ -200,11 +198,9 @@ async fn mark_read_at_a_specific_message_leaves_newer_unread() {
     );
 }
 
-#[tokio::test]
-async fn mark_read_on_empty_room_is_a_noop() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn mark_read_on_empty_room_is_a_noop(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user_and_id(&app).await;
     let (room_id, _) = create_room(&app, &token, "empty").await;
 
@@ -221,11 +217,9 @@ async fn mark_read_on_empty_room_is_a_noop() {
     assert_eq!(body["unread_count"], 0);
 }
 
-#[tokio::test]
-async fn non_members_see_no_room_preview_or_unread() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn non_members_see_no_room_preview_or_unread(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user_and_id(&app).await;
     let (outsider, _) = register_user_and_id(&app).await;
     let (_, author_id) = register_user_and_id(&app).await;
@@ -260,11 +254,9 @@ async fn non_members_see_no_room_preview_or_unread() {
     assert_eq!(listed["last_message"]["body"], "secret");
 }
 
-#[tokio::test]
-async fn mark_read_enforces_membership_and_room_existence() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn mark_read_enforces_membership_and_room_existence(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user_and_id(&app).await;
     let (outsider, _) = register_user_and_id(&app).await;
     let (room_id, _) = create_room(&app, &token, "locked").await;
@@ -292,11 +284,9 @@ async fn mark_read_enforces_membership_and_room_existence() {
     assert_eq!(status, StatusCode::FORBIDDEN);
 }
 
-#[tokio::test]
-async fn mark_read_rejects_a_message_from_another_room() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn mark_read_rejects_a_message_from_another_room(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user_and_id(&app).await;
     let (room_a, user_id) = create_room(&app, &token, "room-a").await;
     let (room_b, _) = create_room(&app, &token, "room-b").await;
