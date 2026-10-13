@@ -29,6 +29,10 @@ const FEATURES: { icon: IconName; title: string; text: string }[] = [
 export function AuthScreen({ busy, error, onSubmit }: AuthScreenProps) {
   return (
     <main className="auth">
+      <a className="auth__about" href="#/about">
+        <Icon name="info" size={15} />
+        About this project
+      </a>
       <section className="auth__brand">
         <div className="auth__glow" aria-hidden="true" />
         <Logo size={32} />

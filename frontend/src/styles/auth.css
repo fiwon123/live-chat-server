@@ -1,6 +1,7 @@
 /* ----- Auth ----- */
 
 .auth {
+  position: relative;
   min-height: 100vh;
   display: grid;
   grid-template-columns: 1.05fr 1fr;
@@ -102,7 +103,9 @@
 .auth__panel {
   display: grid;
   place-items: center;
-  padding: 2rem 1.25rem;
+  /* Top padding keeps the vertically-centered card clear of the absolutely
+     positioned About link on short viewports. */
+  padding: 3.4rem 1.25rem 2rem;
 }
 
 .login {

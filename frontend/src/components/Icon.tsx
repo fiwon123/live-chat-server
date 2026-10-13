@@ -24,7 +24,9 @@ export type IconName =
   | "message"
   | "menu"
   | "more"
-  | "trash";
+  | "trash"
+  | "info"
+  | "external";
 
 const PATHS: Record<IconName, ReactNode> = {
   hash: (
@@ -114,6 +116,19 @@ const PATHS: Record<IconName, ReactNode> = {
       <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
       <path d="M10 11v6M14 11v6" />
+    </>
+  ),
+  info: (
+    <>
+      <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z" />
+      <path d="M12 16v-4M12 8h.01" />
+    </>
+  ),
+  external: (
+    <>
+      <path d="M15 3h6v6" />
+      <path d="M10 14 21 3" />
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
     </>
   ),
 };
