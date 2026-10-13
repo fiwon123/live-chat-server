@@ -5,6 +5,7 @@ import { messageOf } from "./api/client";
 import type { Room } from "./api/types";
 import { notifyNewMessage, requestNotificationPermission } from "./chat/notify";
 import { playChime, unlockAudio } from "./chat/sound";
+import { AboutPage } from "./components/AboutPage";
 import { AuthScreen } from "./components/AuthScreen";
 import { Avatar } from "./components/Avatar";
 import { ChatPanel } from "./components/ChatPanel";
@@ -14,6 +15,7 @@ import { RoomList } from "./components/RoomList";
 import { ToastHost } from "./components/ToastHost";
 import { useAuth } from "./hooks/useAuth";
 import { useChatRoom } from "./hooks/useChatRoom";
+import { useHashRoute } from "./hooks/useHashRoute";
 import { useTheme } from "./hooks/useTheme";
 import { useToasts } from "./hooks/useToasts";
 import { useUnread } from "./hooks/useUnread";
@@ -21,6 +23,7 @@ import "./styles/primitives.css";
 import "./styles/auth.css";
 import "./styles/shell.css";
 import "./styles/chat.css";
+import "./styles/about.css";
 
 function App() {
   const auth = useAuth();
@@ -33,6 +36,7 @@ function App() {
   const { unread, total, bump, markRead, sync, clearAll } = useUnread();
   const { theme, toggle: toggleTheme } = useTheme();
   const { toasts, push, dismiss } = useToasts();
+  const route = useHashRoute();
 
   const token = auth.token ?? "";
   const roomSearchRef = useRef<HTMLInputElement>(null);
@@ -312,6 +316,12 @@ function App() {
     [token, removeRoomLocally, push],
   );
 
+  // About is reachable logged in or out; render it before the auth branches so
+  // a direct load of `#/about` shows the page immediately.
+  if (route === "about") {
+    return <AboutPage />;
+  }
+
   if (auth.status === "loading") {
     return (
       <div className="splash" role="status">
@@ -351,6 +361,9 @@ function App() {
         <div className="topbar__right">
           <Avatar name={auth.user.username} size={28} />
           <span className="who">{auth.user.username}</span>
+          <a className="btn btn--ghost btn--icon" href="#/about" aria-label="About" title="About">
+            <Icon name="info" size={18} />
+          </a>
           <button
             type="button"
             className="btn btn--ghost btn--icon"

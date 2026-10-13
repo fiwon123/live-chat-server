@@ -1,6 +1,7 @@
 /* ----- Auth ----- */
 
 .auth {
+  position: relative;
   min-height: 100vh;
   display: grid;
   grid-template-columns: 1.05fr 1fr;
