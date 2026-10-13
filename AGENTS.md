@@ -103,6 +103,11 @@ A component whose toolchain is absent is **skipped** — a skipped run is not a
 passed run. A component whose toolchain is present but dependencies are missing
 **fails** with instructions (`npm ci`, `cargo fetch`) rather than passing.
 
+Backend `cargo test` needs a reachable `DATABASE_URL` whose role may create
+databases: DB-backed integration tests use `#[sqlx::test]` for an isolated
+database per test and fail loudly without one. CI provides a throwaway Postgres
+service.
+
 ## Runtime Environment
 
 The agent runs at the workspace root. Docker is not available inside the sandbox.

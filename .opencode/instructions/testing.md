@@ -22,9 +22,10 @@
 
 - Unit tests next to code; integration in `tests/` using crate as library
 - Async: `#[tokio::test]` for unit tests; `#[sqlx::test]` for DB-backed integration tests (per-test isolated database, created and dropped automatically)
+- `#[sqlx::test]` keeps a small `_sqlx_test` bookkeeping schema in the `DATABASE_URL` database and reaps orphaned test databases at the start of the next run; it never touches the application tables
 - Names describe behavior (e.g. `rejects_message_too_long`, `isolates_rooms`)
 - Fixtures/helpers in `tests/common/` if shared
-- **WebSocket integration**: spawn the app on an ephemeral port (e.g. with `axum::Server::bind` in a background task), open two WS clients in the same room and a third in another room, assert messages are delivered to the room but not cross-room. This is the automated form of "test with two browser tabs".
+- **WebSocket integration**: spawn the app on an ephemeral port (e.g. `axum::serve` over a `TcpListener` bound to `127.0.0.1:0`, spawned as a background task), open two WS clients in the same room and a third in another room, assert messages are delivered to the room but not cross-room. This is the automated form of "test with two browser tabs".
 
 ### Linting
 
