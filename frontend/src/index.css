@@ -140,12 +140,11 @@ select {
 }
 
 /* ----- Light theme -----
-   Scoped to the conversation panel (and the About page): the app shell —
-   topbar, room list, auth screen, toasts — always stays on the dark `:root`
-   values, so the theme reads as a light chat inside a dark shell. */
+   Scoped to the conversation panel: the app shell — topbar, room list, auth
+   screen, toasts — always stays on the dark `:root` values, so the theme reads
+   as a light chat inside a dark shell. */
 
-[data-theme="light"] .chat,
-[data-theme="light"] .about {
+[data-theme="light"] .chat {
   --accent: #0f766e;
   --accent-strong: #115e59;
   --accent-bright: #0d9488;

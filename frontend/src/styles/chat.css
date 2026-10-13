@@ -322,6 +322,21 @@
   z-index: 2;
 }
 
+/* Invisible hit bridge across the 6px gap to the bubble. The bar is only
+   interactive while `.message:hover` matches, so without this the pointer
+   would leave the message crossing that gap and the bar would vanish before
+   it could be clicked. */
+.message__actions::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 7px;
+}
+
+/* Left-side placement for right-aligned messages. Own messages render no bar
+   (issue #68), but the rule keeps the geometry symmetric should they ever. */
 .message.own .message__actions {
   right: auto;
   left: 0.2rem;
@@ -330,6 +345,12 @@
 .message__actions--below {
   bottom: auto;
   top: calc(100% + 6px);
+}
+
+/* The bridge reaches up when the bar sits below the bubble. */
+.message__actions--below::after {
+  top: auto;
+  bottom: 100%;
 }
 
 .message:hover .message__actions,

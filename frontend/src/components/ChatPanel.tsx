@@ -17,6 +17,7 @@ import {
   typingLabel,
 } from "../chat/messages";
 import { linkified } from "../chat/linkify";
+import { reactionBarOpensBelow } from "../chat/positioning";
 import { QUICK_REACTIONS, hasReacted } from "../chat/reactions";
 import { seenBy, type ReadMap } from "../chat/reads";
 import type { ConnectionStatus } from "../hooks/useChatRoom";
@@ -77,11 +78,11 @@ export function ChatPanel({
   const pinnedRef = useRef(true);
   const loadingOlderRef = useRef(false);
   const prevHeightRef = useRef(0);
+  // The message whose reaction bar is currently revealed, so its above/below
+  // placement can be re-measured while the feed scrolls.
+  const actionsTargetRef = useRef<{ id: string; element: HTMLElement } | null>(null);
 
   const live = status === "open";
-
-  // Room above a message needed to float its reaction bar without clipping.
-  const ACTIONS_CLEARANCE = 40;
 
   /**
    * Decide whether the reaction bar floats above or below the bubble. Runs
@@ -93,9 +94,15 @@ export function ChatPanel({
     if (!feed) {
       return;
     }
+    actionsTargetRef.current = { id: messageId, element };
     const spaceAbove = element.getBoundingClientRect().top - feed.getBoundingClientRect().top;
     // Same value on repeat hovers bails out of the re-render in React.
-    setActionsBelowId(spaceAbove < ACTIONS_CLEARANCE ? messageId : null);
+    setActionsBelowId(reactionBarOpensBelow(spaceAbove) ? messageId : null);
+  };
+
+  /** Forget the revealed bar so scroll no longer re-measures it. */
+  const clearActionsTarget = () => {
+    actionsTargetRef.current = null;
   };
 
   // Follow the conversation when pinned; keep position when loading older pages.
@@ -126,6 +133,12 @@ export function ChatPanel({
     }
   }, [live, room.id]);
 
+  // A message id from another room must never keep a bar flipped below.
+  useEffect(() => {
+    actionsTargetRef.current = null;
+    setActionsBelowId(null);
+  }, [room.id]);
+
   // A failed/empty older-page load never changes `messages`, so the effect
   // above would leave loadingOlderRef stuck — clear it whenever the hook
   // reports the load finished.
@@ -144,6 +157,15 @@ export function ChatPanel({
     const pinned = distance < 64;
     pinnedRef.current = pinned;
     setShowScrollButton(!pinned);
+
+    // A revealed bar can be pushed under the top edge (or freed) by scrolling
+    // or by new messages arriving, so re-measure it against the feed.
+    const target = actionsTargetRef.current;
+    if (target) {
+      const spaceAbove =
+        target.element.getBoundingClientRect().top - feed.getBoundingClientRect().top;
+      setActionsBelowId(reactionBarOpensBelow(spaceAbove) ? target.id : null);
+    }
   };
 
   const scrollToBottom = () => {
@@ -290,8 +312,17 @@ export function ChatPanel({
               )}
               <article
                 className={`message${own ? " own" : ""}${grouped ? " grouped" : ""}`}
-                onPointerEnter={(event) => positionActions(message.id, event.currentTarget)}
+                // Touch pointers fire `pointerenter` at tap time, which would
+                // move the bar out from under the finger; only mouse hovers and
+                // keyboard focus (re)position it.
+                onPointerEnter={(event) => {
+                  if (event.pointerType === "mouse") {
+                    positionActions(message.id, event.currentTarget);
+                  }
+                }}
+                onPointerLeave={clearActionsTarget}
                 onFocus={(event) => positionActions(message.id, event.currentTarget)}
+                onBlur={clearActionsTarget}
               >
                 {!own && !grouped && <Avatar name={message.username} size={34} />}
                 <div className="message__body">
