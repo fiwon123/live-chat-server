@@ -149,24 +149,26 @@ select {
   --accent: #0f766e;
   --accent-strong: #115e59;
   --accent-bright: #0d9488;
-  --accent-soft: rgba(15, 118, 110, 0.12);
-  --accent-softer: rgba(15, 118, 110, 0.06);
-  --accent-border: rgba(15, 118, 110, 0.28);
+  --accent-soft: rgba(13, 148, 136, 0.14);
+  --accent-softer: rgba(13, 148, 136, 0.07);
+  --accent-border: rgba(13, 148, 136, 0.32);
   --accent-contrast: #ffffff;
   --accent-gradient: linear-gradient(135deg, #0f766e 0%, #115e59 100%);
 
-  --bg: #f4f7f6;
+  /* A deeper neutral feed so the white bubbles read as raised surfaces instead
+     of white-on-white. */
+  --bg: #e9eeed;
   --panel: #ffffff;
-  --panel-2: #eef3f1;
-  --panel-hover: #e6edeb;
-  --border: #d8e2e0;
-  --border-strong: #c2d0cd;
-  --border-hover: #a9bbb7;
+  --panel-2: #f4f7f6;
+  --panel-hover: #e3e9e7;
+  --border: #d5dedc;
+  --border-strong: #bccac7;
+  --border-hover: #9fb2ae;
   --overlay: rgba(15, 23, 22, 0.4);
 
-  --text: #10201d;
-  --muted: #5a6f6b;
-  --faint: #788c88;
+  --text: #0f1c1a;
+  --muted: #566b67;
+  --faint: #5f736d;
 
   --good: #047857;
   --warn: #b45309;
@@ -174,10 +176,15 @@ select {
   --bad-soft: rgba(190, 18, 60, 0.07);
   --bad-border: rgba(190, 18, 60, 0.3);
 
-  --ring: 0 0 0 3px rgba(15, 118, 110, 0.3);
-  --shadow-1: 0 1px 2px rgba(16, 32, 29, 0.08);
-  --shadow-2: 0 12px 34px rgba(16, 32, 29, 0.14);
-  --shadow-glow: 0 8px 30px rgba(15, 118, 110, 0.2);
+  --ring: 0 0 0 3px rgba(13, 148, 136, 0.3);
+  --shadow-1: 0 1px 2px rgba(15, 28, 26, 0.1);
+  --shadow-2: 0 10px 28px rgba(15, 28, 26, 0.13);
+  --shadow-glow: 0 8px 30px rgba(13, 148, 136, 0.18);
 
+  /* Re-declare `color` here: `color` is inherited, so overriding the `--text`
+     custom property alone leaves the element's already-resolved dark text
+     color in place (white text on white bubbles). Resolving it against the
+     scoped `--text` re-themes everything below. */
+  color: var(--text);
   color-scheme: light;
 }
