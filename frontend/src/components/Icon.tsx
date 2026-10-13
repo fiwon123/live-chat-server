@@ -23,7 +23,8 @@ export type IconName =
   | "arrow-down"
   | "message"
   | "menu"
-  | "more";
+  | "more"
+  | "trash";
 
 const PATHS: Record<IconName, ReactNode> = {
   hash: (
@@ -107,6 +108,14 @@ const PATHS: Record<IconName, ReactNode> = {
   ),
   menu: <path d="M3 12h18M3 6h18M3 18h18" />,
   more: <path d="M5 12h.01M12 12h.01M19 12h.01" />,
+  trash: (
+    <>
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+      <path d="M10 11v6M14 11v6" />
+    </>
+  ),
 };
 
 export interface IconProps extends SVGProps<SVGSVGElement> {

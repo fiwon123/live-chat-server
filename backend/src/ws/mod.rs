@@ -67,6 +67,9 @@ pub enum WsOutgoing {
     },
     /// A member marked messages read up to `message_id` (ephemeral receipt).
     Read { message_id: Uuid, user: UserRef },
+    /// The room was deleted by its creator. Clients must drop it and must not
+    /// reconnect to it (the room no longer exists).
+    RoomDeleted { room_id: Uuid },
     /// A protocol or validation error; the connection stays open.
     Error { message: String },
 }

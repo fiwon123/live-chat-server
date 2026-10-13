@@ -76,6 +76,7 @@ export type ServerEvent =
       added: boolean;
     }
   | { type: "read"; message_id: string; user: PresenceUser }
+  | { type: "room_deleted"; room_id: string }
   | { type: "error"; message: string };
 
 /** Frames the client sends (see docs/api.md → "Client → server frames"). */

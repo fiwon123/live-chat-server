@@ -14,26 +14,52 @@ impl Rooms {
         Self { pool }
     }
 
-    /// Create a room and add the creator as its first member in a single
-    /// atomic statement — a room row can never exist without its creator's
-    /// membership.
-    pub async fn create(&self, name: &str, created_by: Uuid) -> Result<Room, sqlx::Error> {
-        sqlx::query_as!(
-            Room,
+    /// Create a room and add the creator as its first member, but only if the
+    /// creator currently owns fewer than `max_rooms` rooms.
+    ///
+    /// Both inserts happen in one statement so a room row can never exist
+    /// without its creator's membership. The cap check and the insert are part
+    /// of the same statement, so two concurrent creates cannot both slip past
+    /// the limit. Returns `Ok(None)` when the creator is already at the cap.
+    ///
+    /// Runtime `query_as` (not the `query_as!` macro) is deliberate: the SQL
+    /// text is built here at runtime, so it does not need a `.sqlx` entry.
+    pub async fn create_within_limit(
+        &self,
+        name: &str,
+        created_by: Uuid,
+        max_rooms: i64,
+    ) -> Result<Option<Room>, sqlx::Error> {
+        sqlx::query_as::<_, Room>(
             r#"WITH new_room AS (
                    INSERT INTO rooms (name, created_by)
-                   VALUES ($1, $2)
+                   SELECT $1, $2
+                   WHERE (
+                       SELECT count(*) FROM rooms WHERE created_by = $2
+                   ) < $3
                    RETURNING id, name, created_by, created_at
                ), join_creator AS (
                    INSERT INTO room_memberships (room_id, user_id)
                    SELECT id, $2 FROM new_room
                )
                SELECT id, name, created_by, created_at FROM new_room"#,
-            name,
-            created_by
         )
-        .fetch_one(&self.pool)
+        .bind(name)
+        .bind(created_by)
+        .bind(max_rooms)
+        .fetch_optional(&self.pool)
         .await
+    }
+
+    /// Delete a room by id. Memberships, messages, reactions, and read cursors
+    /// cascade via the schema's `ON DELETE CASCADE` constraints. Returns
+    /// `false` when no room with that id existed.
+    pub async fn delete(&self, id: Uuid) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query("DELETE FROM rooms WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
     }
 
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<Room>, sqlx::Error> {

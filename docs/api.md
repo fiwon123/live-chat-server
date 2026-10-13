@@ -86,7 +86,15 @@ Response `201`:
 }
 ```
 
-`400` on invalid names.
+`400` on invalid names, `409` when the caller already owns the maximum number
+of rooms (`MAX_ROOMS_PER_USER`, default 5):
+
+```json
+{ "error": "you can create at most 5 rooms" }
+```
+
+The cap is enforced inside the insert, so concurrent creates cannot both slip
+past it.
 
 ### `GET /api/rooms`
 
@@ -126,6 +134,19 @@ per-room `unread_count`, and a `last_message` preview.
 One room; `200` with the room object (same shape as above, including the
 member-gated `unread_count` / `last_message`), `404` for an unknown id. No
 membership required to *see* a room, but non-members see no preview.
+
+### `DELETE /api/rooms/{id}`
+
+Delete a room and everything scoped to it — memberships, messages, reactions,
+and read cursors all cascade. **Only the room's creator may delete it.**
+
+- `204` on success.
+- `403` when the caller is not the creator (membership is not enough).
+- `404` for an unknown room (including a second delete of the same room).
+
+Every session currently connected to the room receives a [`room_deleted`](#server--client-frames)
+frame so its client can drop the room instead of reconnecting to a room that no
+longer exists. The room also disappears from `GET /api/rooms`.
 
 ### `POST /api/rooms/{id}/join`
 
@@ -315,6 +336,10 @@ Text frames, JSON, tagged by `type` (`snake_case`):
 { "type": "read", "message_id": "<uuid>", "user": { "id": "<uuid>", "username": "alice" } }
 ```
 
+```json
+{ "type": "room_deleted", "room_id": "<uuid>" }
+```
+
 Semantics:
 
 - **Save before broadcast**: a `send` frame is inserted into Postgres first;
@@ -336,6 +361,13 @@ Semantics:
   (`POST /api/rooms/{id}/leave`) means the next room message closes the
   session instead of being delivered. Connections stop at ~64 KiB per message
   (server-enforced frame cap).
+- **Room deletion is terminal**: when the room's creator calls
+  `DELETE /api/rooms/{id}`, every connected member receives one `room_deleted`
+  frame carrying the `room_id`. Clients must remove the room and **must not
+  reconnect** to it — the room no longer exists, so a re-handshake is rejected.
+  The delete is acknowledged to the caller only after the frame has been handed
+  to the room's broadcast channel, so members already connected are told before
+  the HTTP response returns.
 - **Typing is ephemeral**: `typing` events are relayed room-wide, never
   persisted, and excluded from history. The server throttles them per session
   (1.5 s) and does **not** echo a sender's own event back to them; clients
