@@ -179,8 +179,9 @@ VITE_API_PROXY_TARGET=http://localhost:8080 npm run dev
 |---|---|
 | `make check` | Every gate: backend fmt/clippy/test/build (`--locked`) + frontend format/lint/typecheck/test/build |
 | `make dev-up` / `make dev-down` | Start / stop the Compose stack |
+| `make db-clean` | Truncate all app data in the dev database (destructive) |
 | `make screenshots` | Playwright capture harness (needs the stack running) |
-| `cd backend && cargo test` | Backend unit + integration tests (WS, pub/sub, read receipts) |
+| `cd backend && cargo test` | Backend unit + integration tests (WS, pub/sub, read receipts); needs a reachable `DATABASE_URL` |
 | `cd backend && sqlx migrate run` | Apply migrations manually |
 | `cd frontend && npm run test` | Frontend Vitest unit tests |
 | `cd frontend && npm run build` | Type-check + production build |

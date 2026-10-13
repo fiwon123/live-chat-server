@@ -1,17 +1,17 @@
 //! End-to-end auth flow over the real router.
 //!
-//! These tests need a database; when none is reachable they skip.
+//! Each test runs against its own isolated database (created and dropped by
+//! `#[sqlx::test]`), so the suite never touches the development database and
+//! can assert on global state. A reachable `DATABASE_URL` is required.
 
 mod common;
 
 use axum::http::StatusCode;
 use common::{PASSWORD, register_user, request, test_app, unique_username};
 
-#[tokio::test]
-async fn register_returns_token_and_public_user() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn register_returns_token_and_public_user(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let username = unique_username();
     let (status, body) = request(
         &app,
@@ -32,11 +32,9 @@ async fn register_returns_token_and_public_user() {
     );
 }
 
-#[tokio::test]
-async fn duplicate_username_is_rejected() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn duplicate_username_is_rejected(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let username = unique_username();
     let payload = serde_json::json!({ "username": username, "password": PASSWORD });
 
@@ -55,11 +53,9 @@ async fn duplicate_username_is_rejected() {
     assert!(body["error"].as_str().is_some());
 }
 
-#[tokio::test]
-async fn register_rejects_invalid_username() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn register_rejects_invalid_username(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (status, _) = request(
         &app,
         "POST",
@@ -71,11 +67,9 @@ async fn register_rejects_invalid_username() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
-#[tokio::test]
-async fn register_rejects_short_password() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn register_rejects_short_password(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let username = unique_username();
     let (status, _) = request(
         &app,
@@ -88,11 +82,9 @@ async fn register_rejects_short_password() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
-#[tokio::test]
-async fn login_succeeds_with_correct_password() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn login_succeeds_with_correct_password(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (_, username) = register_user(&app).await;
 
     let (status, body) = request(
@@ -109,11 +101,9 @@ async fn login_succeeds_with_correct_password() {
     assert_eq!(body["user"]["username"], username);
 }
 
-#[tokio::test]
-async fn login_rejects_wrong_password() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn login_rejects_wrong_password(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (_, username) = register_user(&app).await;
 
     let (status, _) = request(
@@ -127,11 +117,9 @@ async fn login_rejects_wrong_password() {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
-#[tokio::test]
-async fn login_rejects_unknown_user_with_same_status() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn login_rejects_unknown_user_with_same_status(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (status, _) = request(
         &app,
         "POST",
@@ -143,11 +131,9 @@ async fn login_rejects_unknown_user_with_same_status() {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
-#[tokio::test]
-async fn me_returns_current_user() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn me_returns_current_user(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, username) = register_user(&app).await;
 
     let (status, body) = request(&app, "GET", "/api/me", None, Some(&token)).await;
@@ -157,11 +143,9 @@ async fn me_returns_current_user() {
     assert!(body.get("password_hash").is_none());
 }
 
-#[tokio::test]
-async fn me_requires_a_valid_token() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn me_requires_a_valid_token(pool: sqlx::PgPool) {
+    let app = test_app(pool);
 
     let (missing, _) = request(&app, "GET", "/api/me", None, None).await;
     let (bad, _) = request(&app, "GET", "/api/me", None, Some("not.a.jwt")).await;

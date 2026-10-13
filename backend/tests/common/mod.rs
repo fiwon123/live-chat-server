@@ -1,12 +1,16 @@
 //! Shared helpers for integration tests.
 //!
-//! DB-backed tests connect to `DATABASE_URL`; when it is unset or unreachable
-//! they skip (returning `None`) instead of failing, so the suite still passes
-//! in environments without a database (e.g. CI).
+//! Every DB-backed test is annotated with `#[sqlx::test]`, which gives it its
+//! own freshly-migrated database and drops it when the test ends. The suite
+//! therefore never touches the development database and never accumulates rows
+//! across runs, so tests can assert on global state instead of being
+//! pollution-tolerant.
+//!
+//! A reachable `DATABASE_URL` whose role may create databases is required; a
+//! missing database fails loudly rather than silently skipping (skipped is not
+//! passed). CI provides a throwaway Postgres service for exactly this.
 
 #![allow(dead_code)]
-
-use std::time::Duration;
 
 use axum::Router;
 use axum::body::Body;
@@ -16,7 +20,6 @@ use live_chat_server::config::Config;
 use live_chat_server::{AppState, build_router};
 use serde_json::Value;
 use sqlx::PgPool;
-use sqlx::postgres::PgPoolOptions;
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -26,63 +29,27 @@ pub struct TestApp {
     pub pool: PgPool,
 }
 
-/// Connect to `DATABASE_URL`, migrating first. Returns `None` (and prints why)
-/// when no database is reachable, so callers can skip gracefully.
-pub async fn connect_db() -> Option<PgPool> {
-    let url = match std::env::var("DATABASE_URL") {
-        Ok(url) if !url.is_empty() => url,
-        _ => {
-            eprintln!("skipping: DATABASE_URL is not set");
-            return None;
-        }
-    };
-
-    let pool = match PgPoolOptions::new()
-        .acquire_timeout(Duration::from_secs(5))
-        .connect(&url)
-        .await
-    {
-        Ok(pool) => pool,
-        Err(err) => {
-            eprintln!("skipping: could not connect to database: {err}");
-            return None;
-        }
-    };
-
-    if let Err(err) = sqlx::migrate!("./migrations").run(&pool).await {
-        eprintln!("skipping: migrations failed: {err}");
-        return None;
-    }
-
-    Some(pool)
-}
-
-/// Build the app against `DATABASE_URL`, migrating first.
-///
-/// Returns `None` (and prints why) when no database is reachable, so callers
-/// can skip gracefully.
-pub async fn test_app() -> Option<TestApp> {
-    let pool = connect_db().await?;
-
+/// Build the app against an isolated, already-migrated pool supplied by
+/// `#[sqlx::test]`.
+pub fn test_app(pool: PgPool) -> TestApp {
     let mut config = Config::from_env();
     config.jwt_secret = "integration-test-secret".to_string();
     config.max_rooms_per_user = MAX_ROOMS_PER_USER;
     let router = build_router(AppState::new(pool.clone(), config));
 
-    Some(TestApp { router, pool })
+    TestApp { router, pool }
 }
 
 /// Build an app whose room events fan out through Redis Pub/Sub instead of the
-/// in-memory channels. `redis` must already be connected.
-pub async fn test_app_with_redis(redis: live_chat_server::ws::RedisPubSub) -> Option<TestApp> {
-    let pool = connect_db().await?;
-
+/// in-memory channels. `redis` must already be connected; the pool is shared so
+/// two instances can simulate separate processes over one database.
+pub fn test_app_with_redis(pool: PgPool, redis: live_chat_server::ws::RedisPubSub) -> TestApp {
     let mut config = Config::from_env();
     config.jwt_secret = "integration-test-secret".to_string();
     config.max_rooms_per_user = MAX_ROOMS_PER_USER;
     let router = build_router(AppState::with_redis(pool.clone(), config, redis));
 
-    Some(TestApp { router, pool })
+    TestApp { router, pool }
 }
 
 /// A username that passes validation and is unique per call.

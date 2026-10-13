@@ -1,17 +1,17 @@
 //! End-to-end room, membership, and history flow over the real router.
 //!
-//! These tests need a database; when none is reachable they skip.
+//! Each test runs against its own isolated database (created and dropped by
+//! `#[sqlx::test]`), so the suite never touches the development database and
+//! can assert on global state. A reachable `DATABASE_URL` is required.
 
 mod common;
 
 use axum::http::StatusCode;
 use common::{MAX_ROOMS_PER_USER, register_user, request, test_app};
 
-#[tokio::test]
-async fn create_room_auto_joins_creator() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn create_room_auto_joins_creator(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
 
     let (status, body) = request(
@@ -29,11 +29,9 @@ async fn create_room_auto_joins_creator() {
     assert!(body["id"].as_str().is_some());
 }
 
-#[tokio::test]
-async fn create_room_rejects_empty_and_long_names() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn create_room_rejects_empty_and_long_names(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
 
     let (empty, _) = request(
@@ -57,11 +55,9 @@ async fn create_room_rejects_empty_and_long_names() {
     assert_eq!(long, StatusCode::BAD_REQUEST);
 }
 
-#[tokio::test]
-async fn rooms_require_auth() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn rooms_require_auth(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (status, _) = request(
         &app,
         "POST",
@@ -73,11 +69,9 @@ async fn rooms_require_auth() {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
-#[tokio::test]
-async fn list_rooms_shows_membership_flag() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn list_rooms_shows_membership_flag(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
     let (other, _) = register_user(&app).await;
 
@@ -114,11 +108,9 @@ async fn list_rooms_shows_membership_flag() {
     assert_eq!(theirs["member"], false);
 }
 
-#[tokio::test]
-async fn get_room_and_404() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn get_room_and_404(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
     let (status, body) = request(
         &app,
@@ -154,11 +146,9 @@ async fn get_room_and_404() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
-#[tokio::test]
-async fn join_and_leave_are_idempotent() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn join_and_leave_are_idempotent(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
     let (joiner, _) = register_user(&app).await;
 
@@ -219,11 +209,9 @@ async fn join_and_leave_are_idempotent() {
     assert_eq!(left["member"], false);
 }
 
-#[tokio::test]
-async fn history_requires_membership() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn history_requires_membership(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
     let (outsider, _) = register_user(&app).await;
 
@@ -261,11 +249,9 @@ async fn history_requires_membership() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
-#[tokio::test]
-async fn history_returns_seeded_messages_with_authors() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn history_returns_seeded_messages_with_authors(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, username) = register_user(&app).await;
 
     let (status, body) = request(
@@ -335,11 +321,9 @@ async fn history_returns_seeded_messages_with_authors() {
     assert_eq!(older[0]["body"], "hello 0");
 }
 
-#[tokio::test]
-async fn unknown_cursor_yields_empty_page() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn unknown_cursor_yields_empty_page(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
     let (status, body) = request(
         &app,
@@ -367,20 +351,17 @@ async fn unknown_cursor_yields_empty_page() {
     assert_eq!(body.as_array().unwrap().len(), 0);
 }
 
-#[tokio::test]
-async fn create_room_enforces_the_per_user_cap() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn create_room_enforces_the_per_user_cap(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, username) = register_user(&app).await;
 
-    // Room names are not unique across the shared database, so scope every
-    // name in this test to the unique username to keep the assertion valid
-    // when earlier runs left rooms behind.
+    // Room names are not unique, so scope every name to the unique username
+    // purely so a failure prints an easy-to-scan list.
     let prefix = format!("{username}-capped");
 
-    // A fresh user owns nothing, so exactly `MAX_ROOMS_PER_USER` creates
-    // succeed regardless of how polluted the shared database is.
+    // The isolated database starts empty, so a fresh user owns nothing and
+    // exactly `MAX_ROOMS_PER_USER` creates succeed.
     for i in 0..MAX_ROOMS_PER_USER {
         let (status, body) = request(
             &app,
@@ -425,11 +406,9 @@ async fn create_room_enforces_the_per_user_cap() {
     assert_eq!(owned as i64, MAX_ROOMS_PER_USER, "list: {list}");
 }
 
-#[tokio::test]
-async fn concurrent_creates_cannot_exceed_the_cap() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn concurrent_creates_cannot_exceed_the_cap(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, username) = register_user(&app).await;
     let prefix = format!("{username}-racy");
 
@@ -472,11 +451,9 @@ async fn concurrent_creates_cannot_exceed_the_cap() {
     );
 }
 
-#[tokio::test]
-async fn cap_is_per_user_not_global() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn cap_is_per_user_not_global(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (first, _) = register_user(&app).await;
     let (second, _) = register_user(&app).await;
 
@@ -514,11 +491,9 @@ async fn cap_is_per_user_not_global() {
     assert_eq!(status, StatusCode::CREATED);
 }
 
-#[tokio::test]
-async fn owner_can_delete_a_room() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn owner_can_delete_a_room(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
     let (status, body) = request(
         &app,
@@ -573,11 +548,9 @@ async fn owner_can_delete_a_room() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
-#[tokio::test]
-async fn deleting_a_room_frees_a_cap_slot() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn deleting_a_room_frees_a_cap_slot(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
 
     let mut room_ids = Vec::new();
@@ -627,11 +600,9 @@ async fn deleting_a_room_frees_a_cap_slot() {
     assert_eq!(status, StatusCode::CREATED);
 }
 
-#[tokio::test]
-async fn non_owner_cannot_delete_a_room() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn non_owner_cannot_delete_a_room(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (owner, _) = register_user(&app).await;
     let (intruder, _) = register_user(&app).await;
 
@@ -679,11 +650,9 @@ async fn non_owner_cannot_delete_a_room() {
     assert_eq!(status, StatusCode::OK);
 }
 
-#[tokio::test]
-async fn delete_unknown_room_is_not_found() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn delete_unknown_room_is_not_found(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
     let (status, _) = request(
         &app,
@@ -696,11 +665,9 @@ async fn delete_unknown_room_is_not_found() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
-#[tokio::test]
-async fn deleting_a_room_requires_auth() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn deleting_a_room_requires_auth(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
     let (_, body) = request(
         &app,
@@ -716,11 +683,9 @@ async fn deleting_a_room_requires_auth() {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
-#[tokio::test]
-async fn deleting_a_room_cascades_to_its_messages() {
-    let Some(app) = test_app().await else {
-        return;
-    };
+#[sqlx::test]
+async fn deleting_a_room_cascades_to_its_messages(pool: sqlx::PgPool) {
+    let app = test_app(pool);
     let (token, _) = register_user(&app).await;
     let (status, body) = request(
         &app,
