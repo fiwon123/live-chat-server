@@ -99,7 +99,7 @@ export function LoginForm({ onSubmit, busy, error }: LoginFormProps) {
             spellCheck={false}
             minLength={3}
             maxLength={32}
-            placeholder="your_handle"
+            placeholder="username"
             required
           />
         </span>
