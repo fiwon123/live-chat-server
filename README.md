@@ -19,13 +19,17 @@ WebSockets, JWT auth, room-based access control, and message persistence in Post
 
 </div>
 
+<p align="center">
+  <img src="docs/screenshots/00-overview.png" alt="Live Chat — the room list on the left and a live conversation on the right (dark theme)" width="880">
+</p>
+
 ---
 
 ## Table of contents
 
 - [About](#about)
-- [Features](#features)
-- [Screenshots](#screenshots)
+- [Capabilities](#capabilities)
+- [Essential features](#essential-features)
 - [Architecture](#architecture)
 - [How to use](#how-to-use)
 - [How to develop](#how-to-develop)
@@ -58,14 +62,15 @@ A few design properties carry through the whole codebase:
 
 Full HTTP + WebSocket protocol reference: **[`docs/api.md`](docs/api.md)**.
 
-## Features
+## Capabilities
 
 **Backend — Rust, Axum + Tokio**
 
 - Auth: register / login with **argon2id** hashing and **JWT (HS256, 24 h)**
   bearer tokens; `/api/me`.
-- Rooms: create, list, get, join/leave (idempotent); open enrollment — a room
-  name is enough to join.
+- Rooms: create, list, get, join (idempotent); open enrollment — a room name is
+  enough to join. Leaving stays on the API (`POST /api/rooms/{id}/leave`) but is
+  no longer surfaced in the UI.
 - History: paginated messages (`limit` + `before` cursor), newest first,
   members only.
 - Real-time chat: WebSocket with pre-upgrade auth + access checks, per-room
@@ -84,20 +89,72 @@ Full HTTP + WebSocket protocol reference: **[`docs/api.md`](docs/api.md)**.
   emoji picker, typing indicators, presence, and read receipts ("Seen by...").
 - Resilient WebSocket client with reconnect + backoff; marks the room read when
   you return to the tab.
-- Dark / light themes (persisted), room-search shortcut (`Ctrl/Cmd + K`), toasts,
-  desktop notifications, keyboard navigation, and screen-reader labels.
-- Typed REST + WebSocket client with response normalization, 92 unit tests.
+- A persisted light theme scoped to the conversation panel, the About page and
+  the auth screen — the app shell (topbar + room list) stays dark — with a
+  theme toggle on every screen. Plus a room-search shortcut (`Ctrl/Cmd + K`),
+  toasts, desktop notifications, keyboard navigation, and screen-reader labels.
+- Typed REST + WebSocket client with response normalization, 118 unit tests.
 
-## Screenshots
+## Essential features
 
-Dark and light themes, captured against a seeded room with reactions and a
-"Seen by bob" receipt.
+Every capture below comes from the same seeded two-user room (alice + bob), in
+the dark theme. Each block highlights one part of the app end to end.
 
-| Dark theme | Light theme |
-|---|---|
-| <img src="docs/screenshots/01-auth-dark.png" alt="Login screen, dark theme" width="440"> | <img src="docs/screenshots/02-auth-light.png" alt="Login screen, light theme" width="440"> |
-| <img src="docs/screenshots/03-rooms-dark.png" alt="Room list with unread badge, dark theme" width="440"> | <img src="docs/screenshots/06-chat-light.png" alt="Chat, light theme" width="440"> |
-| <img src="docs/screenshots/04-chat-dark.png" alt="Chat with reactions, dark theme" width="440"> | <img src="docs/screenshots/05-chat-seen-dark.png" alt="Chat with read receipt, dark theme" width="440"> |
+### Authentication
+
+Register or log in with live username and password validation that runs before
+the request is sent. Passwords are hashed with argon2id on the server and
+sessions use a JWT bearer token. A theme toggle and the About link sit in the
+top-right corner.
+
+<img src="docs/screenshots/01-auth.png" alt="Register / log in screen" width="720">
+
+### Rooms
+
+Search the room list, create a room, or join an existing one with a single
+click. Unread badges mark rooms with new messages, and each room shows who
+created it.
+
+<img src="docs/screenshots/02-rooms.png" alt="Room list with unread badges" width="720">
+
+### Live chat & read receipts
+
+Messages stream over a single WebSocket and are persisted to PostgreSQL
+**before** they are broadcast, so they reappear after a reconnect. Sending
+advances a per-user read cursor, which is why other members see the
+"Seen by …" receipt under your last message.
+
+<img src="docs/screenshots/03-chat.png" alt="Live chat with a Seen by bob read receipt" width="720">
+
+### Reactions
+
+Hover an incoming message to reveal the quick reaction bar. A reaction is stored
+and broadcast like any other event, and reactions already on a message show
+inline beside it.
+
+<img src="docs/screenshots/04-reactions.png" alt="Hover reaction bar on an incoming message" width="720">
+
+### Emoji picker
+
+The composer has an emoji picker for dropping an emoji into the draft without
+leaving the keyboard.
+
+<img src="docs/screenshots/05-emoji-picker.png" alt="Composer emoji picker open" width="720">
+
+### Typing & presence
+
+The server relays ephemeral typing events, so the room shows who is typing, and
+presence join/leave events keep the online list current.
+
+<img src="docs/screenshots/06-typing.png" alt="Typing indicator showing bob is typing" width="720">
+
+### About page
+
+A hash-routed About page (`#/about`) with a quick how-to, the stack, and links
+to the repo and the API reference. It is reachable logged in or out, and carries
+its own theme toggle.
+
+<img src="docs/screenshots/07-about.png" alt="About page" width="720">
 
 ## Architecture
 
@@ -195,11 +252,13 @@ Ports used by the Compose stack (override via `.env`):
 | PostgreSQL | 5434 | 5432 |
 | Redis (optional) | 6381 | 6379 |
 
-### Screenshots
+### Regenerating the screenshots
 
 The harness (`frontend/scripts/screenshots.mjs`) seeds a two-user room over the
-public API and WebSocket — messages, reactions, a read receipt — then captures
-the six PNGs shown above. It is not part of `make check` and CI never runs it.
+public API and WebSocket — messages, reactions, a read receipt, typing — then
+captures one PNG per feature plus the README hero (the eight images shown
+above), all in the dark theme. It is not part of `make check` and CI never runs
+it.
 
 ```bash
 npm ci

@@ -48,13 +48,18 @@ Set `VITE_API_BASE` to call an absolute API base instead of the proxied `/api`.
 ## Screenshots
 
 The Playwright harness (`scripts/screenshots.mjs`) seeds a two-user room over
-the public API + WebSocket — messages, reactions, and a read receipt — then
-captures the key screens as PNGs for visual review:
+the public API + WebSocket — messages, reactions, a read receipt, typing — then
+captures the key screens as PNGs for visual review. All captures use the dark
+theme (the README ships one consistent set):
 
-- `01-auth-dark.png` / `02-auth-light.png` — login
-- `03-rooms-dark.png` — room list with unread badge
-- `04-chat-dark.png` / `06-chat-light.png` — live chat
-- `05-chat-seen-dark.png` — "Seen by bob" receipt
+- `00-overview.png` — README hero: room list + live conversation
+- `01-auth.png` — register / log in
+- `02-rooms.png` — room list with unread badge
+- `03-chat.png` — live chat with a "Seen by bob" read receipt
+- `04-reactions.png` — hover reaction bar
+- `05-emoji-picker.png` — composer emoji picker
+- `06-typing.png` — typing indicator
+- `07-about.png` — About page
 
 It is **not** part of `make check` and CI never runs it.
 
