@@ -7,8 +7,12 @@ import { AboutPage } from "./AboutPage";
 // A DOM-free smoke test: the About page is static, so server-rendering it
 // catches a crash and pins the content the acceptance criteria call for.
 
+const noop = () => {};
+
 describe("AboutPage", () => {
-  const html = renderToStaticMarkup(createElement(AboutPage));
+  const html = renderToStaticMarkup(
+    createElement(AboutPage, { theme: "dark", onToggleTheme: noop }),
+  );
 
   it("links the repository", () => {
     expect(html).toContain("https://github.com/fiwon123/live-chat-server");
@@ -26,5 +30,9 @@ describe("AboutPage", () => {
 
   it("offers a way back to the app", () => {
     expect(html).toContain('href="#/"');
+  });
+
+  it("offers a theme toggle", () => {
+    expect(html).toContain("Switch to light theme");
   });
 });

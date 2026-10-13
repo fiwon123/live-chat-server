@@ -140,12 +140,15 @@ select {
 }
 
 /* ----- Light theme -----
-   Scoped to the conversation panel and the About page: the app shell — topbar,
-   room list, auth screen, toasts — always stays on the dark `:root` values, so
-   the theme reads as a light surface inside a dark shell. */
+   Scoped to the conversation panel, the About page and the auth screen. The
+   rest of the app shell — topbar, room list, toasts — stays on the dark
+   `:root` values, so the theme reads as a light surface inside a dark shell.
+   `.auth` is in scope so toggling light actually re-themes the login/register
+   screen rather than leaving it dark. */
 
 [data-theme="light"] .chat,
-[data-theme="light"] .about {
+[data-theme="light"] .about,
+[data-theme="light"] .auth {
   --accent: #0f766e;
   --accent-strong: #115e59;
   --accent-bright: #0d9488;

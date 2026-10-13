@@ -12,6 +12,7 @@ import { ChatPanel } from "./components/ChatPanel";
 import { Icon } from "./components/Icon";
 import { Logo } from "./components/Logo";
 import { RoomList } from "./components/RoomList";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { ToastHost } from "./components/ToastHost";
 import { useAuth } from "./hooks/useAuth";
 import { useChatRoom } from "./hooks/useChatRoom";
@@ -323,7 +324,7 @@ function App() {
   // About is reachable logged in or out; render it before the auth branches so
   // a direct load of `#/about` shows the page immediately.
   if (route === "about") {
-    return <AboutPage />;
+    return <AboutPage theme={theme} onToggleTheme={toggleTheme} />;
   }
 
   if (auth.status === "loading") {
@@ -345,6 +346,8 @@ function App() {
         }}
         busy={auth.busy}
         error={auth.error}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
     );
   }
@@ -368,15 +371,7 @@ function App() {
           <a className="btn btn--ghost btn--icon" href="#/about" aria-label="About" title="About">
             <Icon name="info" size={18} />
           </a>
-          <button
-            type="button"
-            className="btn btn--ghost btn--icon"
-            onClick={toggleTheme}
-            aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-            title="Toggle theme"
-          >
-            <Icon name={theme === "dark" ? "sun" : "moon"} size={18} />
-          </button>
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
           <button
             type="button"
             className="btn btn--ghost btn--icon"
