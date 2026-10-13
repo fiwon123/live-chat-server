@@ -311,7 +311,7 @@ export function ChatPanel({
                             type="button"
                             className={`reaction${mine ? " reaction--mine" : ""}`}
                             onClick={() => onReact(message.id, group.emoji)}
-                            disabled={!live}
+                            disabled={!live || own}
                             aria-pressed={mine}
                             aria-label={`${group.emoji}, ${group.count} ${
                               group.count === 1 ? "reaction" : "reactions"
@@ -339,27 +339,29 @@ export function ChatPanel({
                     </span>
                   )}
                 </div>
-                <div className="message__actions" role="group" aria-label="Add a reaction">
-                  {QUICK_REACTIONS.map((emoji) => {
-                    const active = message.reactions.some(
-                      (group) => group.emoji === emoji && hasReacted(group, currentUserId),
-                    );
-                    return (
-                      <button
-                        key={emoji}
-                        type="button"
-                        className={`quick-reaction${active ? " quick-reaction--mine" : ""}`}
-                        onClick={() => onReact(message.id, emoji)}
-                        disabled={!live}
-                        aria-pressed={active}
-                        aria-label={`React with ${emoji}`}
-                        title={`React with ${emoji}`}
-                      >
-                        {emoji}
-                      </button>
-                    );
-                  })}
-                </div>
+                {!own && (
+                  <div className="message__actions" role="group" aria-label="Add a reaction">
+                    {QUICK_REACTIONS.map((emoji) => {
+                      const active = message.reactions.some(
+                        (group) => group.emoji === emoji && hasReacted(group, currentUserId),
+                      );
+                      return (
+                        <button
+                          key={emoji}
+                          type="button"
+                          className={`quick-reaction${active ? " quick-reaction--mine" : ""}`}
+                          onClick={() => onReact(message.id, emoji)}
+                          disabled={!live}
+                          aria-pressed={active}
+                          aria-label={`React with ${emoji}`}
+                          title={`React with ${emoji}`}
+                        >
+                          {emoji}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </article>
             </Fragment>
           );

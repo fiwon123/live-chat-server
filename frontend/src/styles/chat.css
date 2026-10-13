@@ -314,11 +314,6 @@
   z-index: 2;
 }
 
-.message.own .message__actions {
-  right: auto;
-  left: 0.2rem;
-}
-
 .message:hover .message__actions,
 .message:focus-within .message__actions {
   opacity: 1;

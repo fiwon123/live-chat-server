@@ -343,30 +343,41 @@ async fn reactions_toggle_persist_and_broadcast_within_room_only() {
         return;
     };
 
-    let (alice_token, alice_name) = register_user(&server.app).await;
-    let (bob_token, _) = register_user(&server.app).await;
+    let (alice_token, _alice_name) = register_user(&server.app).await;
+    let (bob_token, bob_name) = register_user(&server.app).await;
+    let (dave_token, _) = register_user(&server.app).await;
     let (carol_token, _) = register_user(&server.app).await;
 
-    let (room_a, alice_id) = create_room(&server.app, &alice_token, "react-a").await;
+    let (room_a, _) = create_room(&server.app, &alice_token, "react-a").await;
     let (room_b, _) = create_room(&server.app, &carol_token, "react-b").await;
 
-    let (status, _) = request(
-        &server.app,
-        "POST",
-        &format!("/api/rooms/{room_a}/join"),
-        None,
-        Some(&bob_token),
-    )
-    .await;
-    assert_eq!(status, StatusCode::NO_CONTENT);
+    // Bob and Dave join room A; Carol owns room B.
+    for token in [&bob_token, &dave_token] {
+        let (status, _) = request(
+            &server.app,
+            "POST",
+            &format!("/api/rooms/{room_a}/join"),
+            None,
+            Some(token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
 
-    // Drain each client's own `joined` so the streams are clear.
+    // Connect one at a time, draining each client's own `joined` so the
+    // streams are clear before the interesting events.
     let mut alice = connect_ws(&server, &alice_token, &room_a).await;
     let _ = next_event_of_type(&mut alice, "presence").await;
     let mut bob = connect_ws(&server, &bob_token, &room_a).await;
     let bob_joined = next_event_of_type(&mut bob, "presence").await;
     let bob_id = bob_joined["user"]["id"].as_str().unwrap().to_string();
     let _ = next_event_of_type(&mut alice, "presence").await;
+    let mut dave = connect_ws(&server, &dave_token, &room_a).await;
+    let dave_joined = next_event_of_type(&mut dave, "presence").await;
+    let dave_id = dave_joined["user"]["id"].as_str().unwrap().to_string();
+    // Alice and Bob see Dave join.
+    let _ = next_event_of_type(&mut alice, "presence").await;
+    let _ = next_event_of_type(&mut bob, "presence").await;
     let mut carol = connect_ws(&server, &carol_token, &room_b).await;
     let _ = next_event_of_type(&mut carol, "presence").await;
 
@@ -374,6 +385,7 @@ async fn reactions_toggle_persist_and_broadcast_within_room_only() {
     send_text(&mut alice, r#"{"type":"send","body":"reactable"}"#).await;
     let alice_msg = next_event_of_type(&mut alice, "message").await;
     let bob_msg = next_event_of_type(&mut bob, "message").await;
+    let _ = next_event_of_type(&mut dave, "message").await;
     let message_id = alice_msg["message"]["id"].as_str().unwrap().to_string();
     assert_eq!(bob_msg["message"]["id"], message_id);
     // A freshly persisted message carries no reactions.
@@ -384,18 +396,34 @@ async fn reactions_toggle_persist_and_broadcast_within_room_only() {
             .is_empty()
     );
 
-    // Alice reacts 👍: both room-A clients (including the sender) see it.
+    // Reacting to your OWN message is rejected; nothing is broadcast.
     send_text(
         &mut alice,
         &json!({ "type": "react", "message_id": message_id, "emoji": "👍" }).to_string(),
     )
     .await;
-    for stream in [&mut alice, &mut bob] {
+    let error = next_event_of_type(&mut alice, "error").await;
+    assert!(
+        error["message"].as_str().unwrap().contains("your own"),
+        "error message: {}",
+        error["message"]
+    );
+    assert_no_event(&mut bob, Duration::from_millis(200)).await;
+    assert_no_event(&mut dave, Duration::from_millis(200)).await;
+
+    // Bob reacts 👍 to Alice's message: all room-A clients (including the
+    // sender) see it.
+    send_text(
+        &mut bob,
+        &json!({ "type": "react", "message_id": message_id, "emoji": "👍" }).to_string(),
+    )
+    .await;
+    for stream in [&mut alice, &mut bob, &mut dave] {
         let event = next_event_of_type(stream, "reaction").await;
         assert_eq!(event["message_id"], message_id);
         assert_eq!(event["emoji"], "👍");
-        assert_eq!(event["user_id"], alice_id);
-        assert_eq!(event["username"], alice_name);
+        assert_eq!(event["user_id"], bob_id);
+        assert_eq!(event["username"], bob_name);
         assert_eq!(event["added"], true);
     }
 
@@ -417,17 +445,17 @@ async fn reactions_toggle_persist_and_broadcast_within_room_only() {
     assert_eq!(reactions.len(), 1);
     assert_eq!(reactions[0]["emoji"], "👍");
     assert_eq!(reactions[0]["count"], 1);
-    assert_eq!(reactions[0]["user_ids"][0], alice_id);
+    assert_eq!(reactions[0]["user_ids"][0], bob_id);
 
-    // Bob adds the same emoji: still one group, but count 2.
+    // Dave adds the same emoji: still one group, but count 2.
     send_text(
-        &mut bob,
+        &mut dave,
         &json!({ "type": "react", "message_id": message_id, "emoji": "👍" }).to_string(),
     )
     .await;
-    for stream in [&mut alice, &mut bob] {
+    for stream in [&mut alice, &mut bob, &mut dave] {
         let event = next_event_of_type(stream, "reaction").await;
-        assert_eq!(event["user_id"], bob_id);
+        assert_eq!(event["user_id"], dave_id);
         assert_eq!(event["added"], true);
     }
     let (_, history) = request(
@@ -446,15 +474,15 @@ async fn reactions_toggle_persist_and_broadcast_within_room_only() {
     );
     assert_eq!(reactions[0]["count"], 2);
 
-    // Alice reacts 👍 again: toggles her reaction off (added: false).
+    // Bob reacts 👍 again: toggles his reaction off (added: false); Dave's stays.
     send_text(
-        &mut alice,
+        &mut bob,
         &json!({ "type": "react", "message_id": message_id, "emoji": "👍" }).to_string(),
     )
     .await;
-    for stream in [&mut alice, &mut bob] {
+    for stream in [&mut alice, &mut bob, &mut dave] {
         let event = next_event_of_type(stream, "reaction").await;
-        assert_eq!(event["user_id"], alice_id);
+        assert_eq!(event["user_id"], bob_id);
         assert_eq!(event["added"], false);
     }
     let (_, history) = request(
@@ -468,6 +496,7 @@ async fn reactions_toggle_persist_and_broadcast_within_room_only() {
     let reactions = history[0]["reactions"].as_array().unwrap();
     assert_eq!(reactions.len(), 1);
     assert_eq!(reactions[0]["count"], 1);
+    assert_eq!(reactions[0]["user_ids"][0], dave_id);
 
     // Reacting to a message in another room is rejected without delivery.
     send_text(&mut carol, r#"{"type":"send","body":"in room b"}"#).await;
