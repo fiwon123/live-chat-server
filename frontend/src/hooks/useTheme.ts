@@ -1,7 +1,8 @@
 // Light/dark theme persisted to localStorage and mirrored on <html data-theme>.
 //
-// The light theme is scoped to the conversation panel (see index.css), so the
-// app shell stays dark and the browser theme-color stays at the shell colour.
+// The light theme is scoped to the conversation panel, the About page and the
+// auth screen (see index.css), so the app shell stays dark and the browser
+// theme-color stays at the shell colour.
 
 import { useCallback, useEffect, useState } from "react";
 

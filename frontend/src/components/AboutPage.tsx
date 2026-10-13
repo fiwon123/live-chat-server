@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react";
 
+import type { Theme } from "../hooks/useTheme";
 import { Icon } from "./Icon";
 import { Logo } from "./Logo";
+import { ThemeToggle } from "./ThemeToggle";
 
 const REPO_URL = "https://github.com/fiwon123/live-chat-server";
 const API_DOCS_URL = `${REPO_URL}/blob/main/docs/api.md`;
@@ -36,7 +38,12 @@ const STACK = [
   "Serde + tracing",
 ];
 
-export function AboutPage() {
+interface AboutPageProps {
+  theme: Theme;
+  onToggleTheme: () => void;
+}
+
+export function AboutPage({ theme, onToggleTheme }: AboutPageProps) {
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   // Move focus to the page heading on navigation so a route change (which
@@ -52,7 +59,10 @@ export function AboutPage() {
           <Icon name="chevron-left" size={18} />
           Back to chat
         </a>
-        <Logo size={22} />
+        <div className="about__bar-right">
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          <Logo size={22} />
+        </div>
       </header>
 
       <div className="about__inner">

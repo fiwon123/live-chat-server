@@ -29,6 +29,12 @@
   text-decoration: none;
 }
 
+.about__bar-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .about__content {
   display: flex;
   flex-direction: column;
@@ -188,8 +194,9 @@
   color: var(--faint);
 }
 
-/* Discreet About link on the login screen (reachable while logged out). */
-.auth__about {
+/* Discreet corner controls on the login screen (reachable while logged out):
+   the theme toggle and the About link. */
+.auth__corner {
   position: absolute;
   top: 0.9rem;
   right: 1rem;
@@ -197,17 +204,34 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+.auth__about,
+.auth__theme {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   padding: 0.4rem 0.65rem;
   border-radius: var(--radius-full);
   font-size: var(--text-sm);
   color: var(--muted);
-  text-decoration: none;
   transition:
     color var(--dur) var(--ease),
     background var(--dur) var(--ease);
 }
 
-.auth__about:hover {
+.auth__about {
+  text-decoration: none;
+}
+
+.auth__theme {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.auth__about:hover,
+.auth__theme:hover {
   color: var(--text);
   background: var(--accent-softer);
 }
