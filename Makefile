@@ -26,21 +26,27 @@ clean: ## Remove build and cache artifacts
 	@rm -rf frontend/node_modules frontend/dist
 
 preflight:
-	@test -x "$(HOME)/.opencode/bin/opencode" || { echo "ERROR: opencode not found at ~/.opencode/bin/opencode" >&2; exit 1; }
 	@mkdir -p "$(HOME)/.config/opencode" "$(HOME)/.config/gh" && touch "$(HOME)/.gitconfig"
 	@scripts/resolve-gh-token.sh --check >/dev/null 2>&1 || true
+
+require-agent:
+	@test "$$(head -c4 "$(HOME)/.opencode/bin/opencode" 2>/dev/null | od -An -tx1 | tr -d ' 
+')" = "7f454c46" || { echo "ERROR: Linux ELF opencode required" >&2; exit 1; }
 
 screenshots: ## Capture UI screenshots for visual review (needs dev servers)
 	$(MAKE) -C frontend screenshots
 
 dev-up: preflight
-	@HOST_UID=$$(id -u) HOST_GID=$$(id -g) GH_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) GITHUB_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) docker compose up -d --build
+	@COMPOSE="-f docker-compose.yml"; if [ "$$(head -c4 "$(HOME)/.opencode/bin/opencode" 2>/dev/null | od -An -tx1 | tr -d ' 
+')" = "7f454c46" ]; then COMPOSE="$$COMPOSE -f docker-compose.agent.yml"; fi; HOST_UID=$$(id -u) HOST_GID=$$(id -g) GH_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) GITHUB_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) docker compose $$COMPOSE up -d --build
 
 dev-down:
-	@docker compose down
+	@COMPOSE="-f docker-compose.yml"; if [ "$$(head -c4 "$(HOME)/.opencode/bin/opencode" 2>/dev/null | od -An -tx1 | tr -d ' 
+')" = "7f454c46" ]; then COMPOSE="$$COMPOSE -f docker-compose.agent.yml"; fi; docker compose $$COMPOSE down
 
 dev-log:
-	@docker compose logs -f dev
+	@COMPOSE="-f docker-compose.yml"; if [ "$$(head -c4 "$(HOME)/.opencode/bin/opencode" 2>/dev/null | od -An -tx1 | tr -d ' 
+')" = "7f454c46" ]; then COMPOSE="$$COMPOSE -f docker-compose.agent.yml"; fi; docker compose $$COMPOSE logs -f dev
 
 dev-build: preflight
 	@docker compose build
@@ -56,11 +62,11 @@ opencode: dev-opencode
 opencode-auto: dev-opencode-auto
 
 dev-shell: preflight
-	@docker compose exec dev bash || docker compose run --rm dev bash
+	@COMPOSE="-f docker-compose.yml"; if [ "$$(head -c4 "$(HOME)/.opencode/bin/opencode" 2>/dev/null | od -An -tx1 | tr -d ' 
+')" = "7f454c46" ]; then COMPOSE="$$COMPOSE -f docker-compose.agent.yml"; fi; docker compose $$COMPOSE exec dev bash || docker compose $$COMPOSE run --rm dev bash
 
-dev-opencode: preflight
-	@if [ -z "$$(docker compose ps -q dev 2>/dev/null)" ]; then echo "[opencode] starting dev stack..."; HOST_UID=$$(id -u) HOST_GID=$$(id -g) GH_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) GITHUB_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) docker compose up -d dev; fi
-	@if [ -t 0 ]; then docker compose exec -it dev zsh -lc "cd /workspace && opencode $(OPENCODE_ARGS)" || docker compose exec -it dev bash -lc "opencode $(OPENCODE_ARGS)"; else docker compose exec -T dev zsh -lc "cd /workspace && opencode $(OPENCODE_ARGS)" || docker compose exec -T dev bash -lc "opencode $(OPENCODE_ARGS)"; fi
+dev-opencode: preflight require-agent
+	@COMPOSE="-f docker-compose.yml -f docker-compose.agent.yml"; HOST_UID=$$(id -u) HOST_GID=$$(id -g) GH_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) GITHUB_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null); if [ -z "$$(docker compose $$COMPOSE ps -q dev 2>/dev/null)" ]; then echo "[opencode] starting dev stack..."; docker compose $$COMPOSE up -d dev; fi; docker compose $$COMPOSE exec -it dev bash -lc "cd /workspace && opencode $(OPENCODE_ARGS)" || docker compose $$COMPOSE exec -it dev zsh -lc "cd /workspace && opencode $(OPENCODE_ARGS)"
 
 dev-opencode-auto: OPENCODE_ARGS = --auto
 dev-opencode-auto: dev-opencode

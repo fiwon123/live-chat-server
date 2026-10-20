@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# CRLF guard (#436)
+if [[ -f "${BASH_SOURCE[0]}" ]] && grep -q $'\r$' "${BASH_SOURCE[0]}"; then # crlf-guard
+    printf '%s\n' "[dev] ${BASH_SOURCE[0]##*/} has CRLF line endings; re-checkout with LF." >&2; exit 1 # crlf-guard
+fi # crlf-guard
 set -euo pipefail
 DEV_DIR="${DEV_DIR:-/workspace}"
 if ! getent passwd "$(id -u)" >/dev/null; then
