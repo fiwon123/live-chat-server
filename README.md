@@ -177,9 +177,23 @@ agree on optional fields even across server versions.
 
 The easiest way to see it running is Docker Compose:
 
+### OS matrix (dev sandbox)
+
+Base compose runs standalone on any OS. Host mounts (gh/opencode/gitconfig) merge only when a Linux ELF opencode binary exists. Native Windows uses the Python launcher.
+
+| Platform | Start | In-container opencode | Notes |
+|---|---|---|---|
+| Linux | `make dev-up` | Yes | Full support |
+| macOS | `make dev-up` | Host only (Mach-O can't run in Linux) | OK |
+| WSL2 | `make dev-up` | Yes (inside distro) | Full support |
+| Windows (native) | `python scripts/dev-up.py dev-up` or `.\scripts\dev-up.ps1 dev-up` | Host only | See Troubleshooting; CRLF guarded |
+
+`dev-up` does **not** require opencode; only `make opencode` / `make shell` require a Linux ELF binary.
+
 ```bash
 make dev-up        # Postgres + API (:8083) + frontend (:5173)
 ```
+
 
 1. Open <http://localhost:5173>.
 2. Register a username and password (any unique username works).
